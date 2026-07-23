@@ -1,0 +1,48 @@
+name: Check for newer NewPipeExtractor
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    # เช็คทุกวัน 03:00 UTC (~10:00 เมืองไทย) — ถ้าไม่มีเวอร์ชันใหม่กว่าเดิม จะไม่ทำอะไรเลย
+    - cron: "0 3 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get latest NewPipeExtractor release tag
+        id: latest
+        run: |
+          TAG=$(curl -s https://api.github.com/repos/TeamNewPipe/NewPipeExtractor/releases/latest | jq -r '.tag_name')
+          if [ -z "$TAG" ] || [ "$TAG" = "null" ]; then
+            echo "หา tag ล่าสุดไม่เจอ ข้ามรอบนี้ไปก่อน"
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          else
+            echo "เวอร์ชันล่าสุดบน GitHub: $TAG"
+            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compare with current pinned version
+        id: current
+        run: |
+          CURRENT=$(grep -oP '(?<=newpipeExtractorVersion=).*' gradle.properties)
+          echo "เวอร์ชันที่ pin ไว้ตอนนี้: $CURRENT"
+          echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version if newer one exists
+        if: steps.latest.outputs.tag != '' && steps.latest.outputs.tag != steps.current.outputs.version
+        run: |
+          NEW_TAG="${{ steps.latest.outputs.tag }}"
+          sed -i "s/newpipeExtractorVersion=.*/newpipeExtractorVersion=${NEW_TAG}/" gradle.properties
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add gradle.properties
+          git commit -m "chore: bump NewPipeExtractor to ${NEW_TAG}"
+          git push
