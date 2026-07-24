@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- ไฟล์ APK ที่ดาวน์โหลดมาเก็บใน cache ของแอปเอง ก่อนส่งให้ตัวติดตั้งระบบเปิด -->
+    <cache-path name="apk_updates" path="apk-updates/" />
+</paths>
