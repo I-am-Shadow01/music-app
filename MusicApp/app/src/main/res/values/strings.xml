@@ -1,0 +1,64 @@
+<resources>
+    <string name="app_name">Music App</string>
+
+    <string name="search_placeholder">ค้นหาเพลง…</string>
+    <string name="search_empty_state">พิมพ์ชื่อเพลงหรือศิลปินเพื่อค้นหา</string>
+    <string name="search_error">ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง</string>
+
+    <string name="player_no_track">ยังไม่มีเพลงที่กำลังเล่น</string>
+    <string name="player_play">เล่น</string>
+    <string name="player_pause">หยุดชั่วคราว</string>
+    <string name="player_next">เพลงถัดไป</string>
+    <string name="player_previous">เพลงก่อนหน้า</string>
+    <string name="player_shuffle">สุ่มเพลง</string>
+    <string name="player_repeat">วนซ้ำ</string>
+    <string name="player_up_next">ถัดไป</string>
+
+    <string name="nav_search">ค้นหา</string>
+    <string name="nav_player">กำลังเล่น</string>
+    <string name="nav_settings">ตั้งค่า</string>
+
+    <string name="update_available">มีเวอร์ชันใหม่พร้อมอัปเดต</string>
+    <string name="update_button">อัปเดต</string>
+    <string name="update_downloading">กำลังโหลดอัปเดต…</string>
+    <string name="update_permission_needed">ต้องอนุญาตให้ติดตั้งแอปจากแหล่งนี้ก่อน</string>
+    <string name="update_permission_button">ไปตั้งค่า</string>
+
+    <string name="settings_theme_title">ธีม</string>
+    <string name="settings_theme_system">ตามระบบ</string>
+    <string name="settings_theme_light">สว่าง</string>
+    <string name="settings_theme_dark">มืด</string>
+
+    <string name="settings_accent_color_title">สีหลัก</string>
+    <string name="settings_accent_custom_hint">แตะสีตัวอย่างเพื่อเลือกไว จะปรับละเอียดเองด้านล่างก็ได้</string>
+    <string name="settings_accent_hue">เฉดสี (Hue)</string>
+    <string name="settings_accent_saturation">ความสด (Saturation)</string>
+    <string name="settings_accent_lightness">ความสว่าง (Lightness)</string>
+
+    <string name="settings_audio_quality_title">คุณภาพเสียง</string>
+    <string name="settings_audio_quality_value">%1$d kbps</string>
+    <string name="settings_audio_quality_hint">ลากเพื่อปรับคุณภาพเสียงเป็น kbps โดยตรง — ค่าที่ตั้งสูงกว่าที่มีจริงจะได้คุณภาพสูงสุดที่มีให้อัตโนมัติ</string>
+
+    <string name="settings_playback_title">การเล่นเพลง</string>
+    <string name="settings_auto_advance">เล่นเพลงถัดไปในคิวต่อเองเมื่อจบเพลง</string>
+
+    <string name="settings_cache_title">แคชเพลง</string>
+    <string name="settings_clear_cache_button">ล้างแคชลิงก์เสียง</string>
+    <string name="settings_cache_cleared">ล้างแคชแล้ว</string>
+
+    <string name="settings_update_title">อัปเดตแอป</string>
+    <string name="settings_auto_check_updates">เช็คอัปเดตอัตโนมัติตอนเปิดแอป</string>
+    <string name="settings_check_now_button">เช็คอัปเดตตอนนี้</string>
+    <string name="settings_up_to_date">เป็นเวอร์ชันล่าสุดแล้ว</string>
+
+    <string name="settings_about_title">เกี่ยวกับแอป</string>
+    <string name="settings_build_number">Build #%1$d</string>
+    <string name="settings_view_releases">ดู release ทั้งหมดบน GitHub</string>
+
+    <string name="settings_dev_mode_title">โหมดนักพัฒนา</string>
+    <string name="settings_dev_mode_toggle">เปิดโหมดนักพัฒนา</string>
+    <string name="settings_dev_app_info_title">ข้อมูลแอป</string>
+    <string name="settings_dev_playback_info_title">สถานะการเล่นเพลง</string>
+    <string name="settings_dev_reset_button">รีเซ็ตค่าตั้งค่าทั้งหมด</string>
+    <string name="settings_dev_reset_done">รีเซ็ตแล้ว</string>
+</resources>
