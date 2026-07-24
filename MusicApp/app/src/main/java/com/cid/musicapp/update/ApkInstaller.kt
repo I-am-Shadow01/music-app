@@ -28,8 +28,8 @@ class ApkInstaller(private val context: Context) {
         }
     }
 
-    /** โหลดไฟล์ APK มาเก็บใน cache ของแอป คืน path ไฟล์ที่โหลดเสร็จ */
-    suspend fun download(url: String): File = withContext(Dispatchers.IO) {
+    /** โหลดไฟล์ APK มาเก็บใน cache ของแอป พร้อมรายงานความคืบหน้า (0–100) คืน path ไฟล์ที่โหลดเสร็จ */
+    suspend fun download(url: String, onProgress: (percent: Int) -> Unit): File = withContext(Dispatchers.IO) {
         val dir = File(context.cacheDir, "apk-updates").apply { mkdirs() }
         val outFile = File(dir, "update.apk")
 
@@ -37,7 +37,29 @@ class ApkInstaller(private val context: Context) {
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw Exception("โหลดไฟล์อัปเดตไม่สำเร็จ (${response.code})")
             val body = response.body ?: throw Exception("ไม่มีข้อมูลไฟล์ตอบกลับมา")
-            outFile.outputStream().use { output -> body.byteStream().copyTo(output) }
+            val totalBytes = body.contentLength()
+
+            body.byteStream().use { input ->
+                outFile.outputStream().use { output ->
+                    val buffer = ByteArray(8 * 1024)
+                    var bytesRead: Int
+                    var totalRead = 0L
+                    var lastReportedPercent = -1
+
+                    while (input.read(buffer).also { bytesRead = it } != -1) {
+                        output.write(buffer, 0, bytesRead)
+                        totalRead += bytesRead
+
+                        if (totalBytes > 0) {
+                            val percent = ((totalRead * 100) / totalBytes).toInt()
+                            if (percent != lastReportedPercent) {
+                                lastReportedPercent = percent
+                                onProgress(percent)
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         outFile

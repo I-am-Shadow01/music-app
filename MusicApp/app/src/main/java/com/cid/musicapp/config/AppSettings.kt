@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -30,6 +31,8 @@ class AppSettings(context: Context) {
         private val KEY_AUTO_ADVANCE = booleanPreferencesKey("auto_advance_enabled")
         private val KEY_AUTO_CHECK_UPDATES = booleanPreferencesKey("auto_check_updates_enabled")
         private val KEY_DEV_MODE = booleanPreferencesKey("dev_mode_enabled")
+        private val KEY_SKIPPED_UPDATE_BUILD = intPreferencesKey("skipped_update_build_number")
+        private val KEY_LAST_AUTO_CHECK_TIMESTAMP_MILLIS = longPreferencesKey("last_auto_check_timestamp_millis")
     }
 
     val themeModeFlow: Flow<ThemeMode> = dataStore.data.map { prefs ->
@@ -62,6 +65,16 @@ class AppSettings(context: Context) {
         prefs[KEY_DEV_MODE] ?: false
     }
 
+    /** เลข build ที่ผู้ใช้กด "ปิด/ข้าม" แจ้งเตือนอัปเดตไปแล้ว — ไม่ต้องเตือนซ้ำจนกว่าจะมี build ใหม่กว่านี้ */
+    val skippedUpdateBuildFlow: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[KEY_SKIPPED_UPDATE_BUILD] ?: 0
+    }
+
+    /** เวลาล่าสุดที่เช็คอัปเดตอัตโนมัติ (unix millis) — ใช้เว้นช่วงกันเช็คถี่เกินไปทุกครั้งที่เปิดแอป */
+    val lastAutoCheckTimestampFlow: Flow<Long> = dataStore.data.map { prefs ->
+        prefs[KEY_LAST_AUTO_CHECK_TIMESTAMP_MILLIS] ?: 0L
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         dataStore.edit { prefs -> prefs[KEY_THEME_MODE] = mode.name }
     }
@@ -84,6 +97,14 @@ class AppSettings(context: Context) {
 
     suspend fun setDevModeEnabled(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_DEV_MODE] = enabled }
+    }
+
+    suspend fun setSkippedUpdateBuild(buildNumber: Int) {
+        dataStore.edit { prefs -> prefs[KEY_SKIPPED_UPDATE_BUILD] = buildNumber }
+    }
+
+    suspend fun setLastAutoCheckTimestamp(timestampMillis: Long) {
+        dataStore.edit { prefs -> prefs[KEY_LAST_AUTO_CHECK_TIMESTAMP_MILLIS] = timestampMillis }
     }
 
     /** ล้างค่าตั้งค่าทั้งหมดกลับเป็นค่าเริ่มต้น (ปุ่มในโหมดนักพัฒนา) */

@@ -34,4 +34,9 @@ object AppConstants {
 
     // --- สีหลักของธีม (ARGB) ---
     const val DEFAULT_ACCENT_COLOR_ARGB = 0xFF7C4DFF.toInt()
+
+    // --- เช็คอัปเดต ---
+    // เว้นช่วงขั้นต่ำก่อนเช็คอัปเดตอัตโนมัติซ้ำ กันยิง GitHub API ทุกครั้งที่เปิดแอป
+    // (กดปุ่ม "เช็คอัปเดตตอนนี้" เองในหน้าตั้งค่าไม่ถูกจำกัดด้วยค่านี้ เช็คได้ทันทีเสมอ)
+    const val AUTO_UPDATE_CHECK_MIN_INTERVAL_MILLIS = 6 * 60 * 60 * 1000L // 6 ชั่วโมง
 }

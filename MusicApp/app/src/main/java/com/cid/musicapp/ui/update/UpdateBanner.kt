@@ -4,6 +4,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,7 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cid.musicapp.R
 
-/** แถบแจ้งเตือนเวลามีเวอร์ชันใหม่ พร้อมปุ่มกดอัปเดตในตัว แสดงเฉพาะตอนมีอัปเดตจริงๆ */
+/** แถบแจ้งเตือนเวลามีเวอร์ชันใหม่ พร้อมปุ่มกดอัปเดต/ปิดในตัว แสดงเฉพาะตอนมีอัปเดตจริงๆ */
 @Composable
 fun UpdateBanner(viewModel: UpdateViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -54,12 +56,38 @@ fun UpdateBanner(viewModel: UpdateViewModel) {
                         style = MaterialTheme.typography.bodyMedium
                     )
 
-                    if (uiState.isDownloading) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-                    } else {
+                    if (!uiState.isDownloading) {
+                        IconButton(
+                            onClick = { viewModel.skipThisUpdate() },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = stringResource(R.string.update_skip)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
                         Button(onClick = { viewModel.onUpdateClicked() }) {
                             Text(stringResource(R.string.update_button))
                         }
+                    }
+                }
+
+                if (uiState.isDownloading) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val percent = uiState.downloadProgressPercent
+                    if (percent != null) {
+                        LinearProgressIndicator(
+                            progress = { percent / 100f },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            stringResource(R.string.update_downloading_percent, percent),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    } else {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                     }
                 }
 
