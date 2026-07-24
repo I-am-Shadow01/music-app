@@ -1,0 +1,14 @@
+*.iml
+.gradle/
+/local.properties
+.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+*.apk
+
+# หมายเหตุ: keystore/debug.keystore ตั้งใจ commit เข้า repo (ไม่ได้ลืม)
+# เป็น debug key เฉยๆ ไม่ใช่ release key ที่ต้องเก็บเป็นความลับ — ต้อง commit เพื่อให้ทุก
+# build เซ็นด้วย key เดียวกันเสมอ ไม่งั้นอัปเดตแอปจะขึ้น "แพ็กเกจขัดแย้ง" ทุกรอบ
