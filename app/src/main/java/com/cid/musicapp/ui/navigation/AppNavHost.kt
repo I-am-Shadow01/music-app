@@ -3,6 +3,7 @@ package com.cid.musicapp.ui.navigation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -12,7 +13,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -67,16 +71,14 @@ fun AppNavHost(container: AppContainer) {
 
     val tabs = listOf(
         BottomTab(ROUTE_SEARCH, R.string.nav_search, Icons.Default.Search),
-        BottomTab(ROUTE_PLAYER, R.string.nav_player, Icons.Default.PlayArrow),
         BottomTab(ROUTE_SETTINGS, R.string.nav_settings, Icons.Default.Settings)
     )
 
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    // นำทางไปแท็บหนึ่งๆ ด้วยกฎเดียวกันเสมอ ไม่ว่าจะกดจาก bottom nav, กดเพลงในผลค้นหา, หรือกด mini-player
-    // (เดิมกดเพลง/mini-player ใช้ navigate() เปล่าๆ ส่วน bottom nav ใช้ popUpTo+restoreState — ผสมกัน
-    // ทำให้ back stack ปนกันจนกดแท็บ "ค้นหา" ตอนอยู่หน้า Player แล้วไม่ไปไหน ต้องกด back เอาเอง)
+    // สลับไปแท็บหลักด้านล่าง (ค้นหา/ตั้งค่า) เท่านั้น — ใช้ popUpTo+restoreState กันกดสลับแท็บไปมาแล้ว
+    // back stack พอกจนกด back ไม่ออก (คงตำแหน่งที่เลื่อนไว้ของแต่ละแท็บไว้ให้ด้วย)
     fun navigateToTab(route: String) {
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) {
@@ -85,6 +87,11 @@ fun AppNavHost(container: AppContainer) {
             launchSingleTop = true
             restoreState = true
         }
+    }
+
+    // เปิดหน้า "กำลังเล่น" แบบ push ธรรมดา (ไม่ใช่แท็บ) — กด back หรือปุ่มพับที่หัวจอแล้วกลับมาแท็บเดิมที่ค้างไว้เป๊ะ
+    fun openPlayer() {
+        navController.navigate(ROUTE_PLAYER) { launchSingleTop = true }
     }
 
     // แสดง error เป็น Snackbar ครั้งเดียวต่อ error หนึ่งอัน แล้วเคลียร์ทิ้ง
@@ -104,7 +111,7 @@ fun AppNavHost(container: AppContainer) {
                     MiniPlayerBar(
                         state = playbackState,
                         onTogglePlayPause = { container.playerController.togglePlayPause() },
-                        onClick = { navigateToTab(ROUTE_PLAYER) }
+                        onClick = { openPlayer() }
                     )
                 }
 
@@ -146,7 +153,7 @@ fun AppNavHost(container: AppContainer) {
                         viewModel = viewModel,
                         onTrackSelected = { tracks, index ->
                             container.playerController.playQueue(tracks, index)
-                            navigateToTab(ROUTE_PLAYER)
+                            openPlayer()
                         },
                         onAddToQueue = { track ->
                             container.playerController.addToQueue(track)
@@ -165,7 +172,10 @@ fun AppNavHost(container: AppContainer) {
                             initializer { PlayerViewModel(container.playerController) }
                         }
                     )
-                    PlayerScreen(viewModel = viewModel)
+                    PlayerScreen(
+                        viewModel = viewModel,
+                        onCollapse = { navController.popBackStack() }
+                    )
                 }
 
                 composable(ROUTE_SETTINGS) {
@@ -198,10 +208,15 @@ private fun MiniPlayerBar(
     } else {
         0f
     }
+    val shape = RoundedCornerShape(16.dp)
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .padding(horizontal = 10.dp)
+            .padding(bottom = 6.dp)
+            .shadow(elevation = 6.dp, shape = shape, clip = false)
+            .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
     ) {
@@ -221,13 +236,14 @@ private fun MiniPlayerBar(
                     .crossfade(AppConstants.IMAGE_CROSSFADE_MILLIS)
                     .build(),
                 contentDescription = null,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))
             )
             Spacer(modifier = Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     state.currentTitle ?: "",
                     style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
                     maxLines = 1
                 )
                 Text(

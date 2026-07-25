@@ -24,6 +24,8 @@
     <string name="player_shuffle">สุ่มเพลง</string>
     <string name="player_repeat">วนซ้ำ</string>
     <string name="player_up_next">ถัดไป</string>
+    <string name="player_collapse">พับหน้าจอเล่นเพลง</string>
+    <string name="player_now_playing_header">กำลังเล่น</string>
 
     <string name="nav_search">ค้นหา</string>
     <string name="nav_player">กำลังเล่น</string>
