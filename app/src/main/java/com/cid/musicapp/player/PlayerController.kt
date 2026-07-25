@@ -139,6 +139,31 @@ class PlayerController(
         scope.launch { playCurrent() }
     }
 
+    /** เพิ่ม track ต่อท้ายคิว (เล่นหลังสุด) — ถ้ายังไม่มีคิวอยู่เลย ให้เริ่มเล่นทันทีแทน */
+    fun addToQueue(track: Track) {
+        if (queue.isEmpty()) {
+            playQueue(listOf(track), 0)
+            return
+        }
+        val newQueueIndex = queue.size
+        queue = queue + track
+        order = order + newQueueIndex
+        publishUpcoming()
+    }
+
+    /** แทรก track ให้เล่นเป็นเพลงถัดไปทันที (ก่อนเพลงอื่นๆ ที่ต่อคิวไว้) — ถ้ายังไม่มีคิว ให้เริ่มเล่นทันทีแทน */
+    fun playNext(track: Track) {
+        if (queue.isEmpty()) {
+            playQueue(listOf(track), 0)
+            return
+        }
+        val newQueueIndex = queue.size
+        queue = queue + track
+        val insertAt = (orderPosition + 1).coerceAtMost(order.size)
+        order = order.toMutableList().apply { add(insertAt, newQueueIndex) }
+        publishUpcoming()
+    }
+
     /** กดเพลงใน "ถัดไป" โดยตรง ข้ามไปเล่นตำแหน่งนั้นใน play-order ทันที */
     fun playAtOrderPosition(targetOrderPosition: Int) {
         if (targetOrderPosition !in order.indices) return

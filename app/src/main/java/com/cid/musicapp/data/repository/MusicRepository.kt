@@ -6,10 +6,16 @@ import io.github.shalva97.initNewPipe
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
+import org.schabi.newpipe.extractor.InfoItem
+import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
+import org.schabi.newpipe.extractor.search.SearchExtractor
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
 import kotlin.math.abs
+
+/** ผลค้นหาหนึ่งหน้า พร้อมบอกว่ายังมีหน้าถัดไปให้โหลดเพิ่มไหม (ใช้ทำ infinite scroll) */
+data class SearchResultPage(val tracks: List<Track>, val hasMore: Boolean)
 
 /**
  * ค้นหา + ดึงลิงก์เสียงจาก YouTube โดยตรงในแอป ผ่าน NewPipeExtractor (ห่อด้วย NewValve)
@@ -25,6 +31,13 @@ class MusicRepository(private val appSettings: AppSettings) {
     private val streamUrlCache = mutableMapOf<String, Pair<String, Long>>()
     private val cacheTtlMillis = AppConstants.STREAM_CACHE_TTL_MILLIS
 
+    // session ของการค้นหาปัจจุบัน — ต้องเก็บ extractor instance เดิมไว้เพราะ getPage(nextPage)
+    // เป็น method ของ extractor ตัวเดิมเท่านั้น (สร้างตัวใหม่แล้วเรียก getPage จะ error)
+    // หมายเหตุ: ตั้งใจให้รองรับแค่ 1 การค้นหาที่ active อยู่ในแต่ละครั้ง (แอปนี้มีหน้าค้นหาเดียว
+    // ไม่มีหลาย search session พร้อมกัน) — ถ้าจะเพิ่ม multi-session ในอนาคตค่อยเปลี่ยนเป็น map ตาม query
+    private var activeSearchExtractor: SearchExtractor? = null
+    private var nextSearchPage: Page? = null
+
     private fun ensureInitialized() {
         if (!initialized) {
             initNewPipe()
@@ -32,24 +45,51 @@ class MusicRepository(private val appSettings: AppSettings) {
         }
     }
 
-    suspend fun search(query: String): List<Track> = withContext(Dispatchers.IO) {
+    /** ค้นหาหน้าแรก — เริ่ม session ใหม่เสมอ (ทิ้ง session ค้นหาก่อนหน้า ถ้ามี) */
+    suspend fun search(query: String): SearchResultPage = withContext(Dispatchers.IO) {
         ensureInitialized()
 
         val extractor = youtube.getSearchExtractor(query, emptyList(), "")
         extractor.fetchPage()
 
-        extractor.initialPage.items
-            .filterIsInstance<StreamInfoItem>()
-            .map { item ->
-                Track(
-                    id = item.url,
-                    title = item.name,
-                    artist = item.uploaderName ?: "Unknown",
-                    durationSeconds = item.duration.toInt().takeIf { it > 0 },
-                    thumbnailUrl = item.thumbnails.firstOrNull()?.url
-                )
-            }
+        val page = extractor.initialPage
+        activeSearchExtractor = extractor
+        nextSearchPage = page.nextPage
+
+        SearchResultPage(
+            tracks = page.items.toTracks(),
+            hasMore = page.nextPage != null
+        )
     }
+
+    /** โหลดผลค้นหาหน้าถัดไปของ session ที่ค้นหาไว้ล่าสุดด้วย search() — เรียกตอนเลื่อนจนใกล้สุดลิสต์ */
+    suspend fun loadMoreSearchResults(): SearchResultPage = withContext(Dispatchers.IO) {
+        val extractor = activeSearchExtractor
+        val page = nextSearchPage
+
+        if (extractor == null || page == null) {
+            return@withContext SearchResultPage(tracks = emptyList(), hasMore = false)
+        }
+
+        val nextInfoPage = extractor.getPage(page)
+        nextSearchPage = nextInfoPage.nextPage
+
+        SearchResultPage(
+            tracks = nextInfoPage.items.toTracks(),
+            hasMore = nextInfoPage.nextPage != null
+        )
+    }
+
+    private fun List<InfoItem>.toTracks(): List<Track> =
+        filterIsInstance<StreamInfoItem>().map { item ->
+            Track(
+                id = item.url,
+                title = item.name,
+                artist = item.uploaderName ?: "Unknown",
+                durationSeconds = item.duration.toInt().takeIf { it > 0 },
+                thumbnailUrl = item.thumbnails.firstOrNull()?.url
+            )
+        }
 
     /**
      * ดึงลิงก์เสียงตรง (progressive stream) สำหรับ track หนึ่งตัว

@@ -19,8 +19,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.cid.musicapp.R
+import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.player.RepeatMode
 import com.cid.musicapp.player.UpcomingItem
 import com.cid.musicapp.ui.util.formatDurationMillis
@@ -47,7 +50,10 @@ fun PlayerScreen(viewModel: PlayerViewModel) {
         ) {
             Box(contentAlignment = Alignment.Center) {
                 AsyncImage(
-                    model = state.currentThumbnailUrl,
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(state.currentThumbnailUrl)
+                        .crossfade(AppConstants.IMAGE_CROSSFADE_MILLIS)
+                        .build(),
                     contentDescription = null,
                     modifier = Modifier.size(220.dp)
                 )
@@ -169,7 +175,10 @@ private fun UpcomingRow(item: UpcomingItem, onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         AsyncImage(
-            model = item.track.thumbnailUrl,
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(item.track.thumbnailUrl)
+                .crossfade(AppConstants.IMAGE_CROSSFADE_MILLIS)
+                .build(),
             contentDescription = null,
             modifier = Modifier.size(44.dp)
         )

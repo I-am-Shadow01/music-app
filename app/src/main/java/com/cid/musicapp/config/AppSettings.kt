@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "app_settings")
 
@@ -30,6 +31,7 @@ class AppSettings(context: Context) {
         private val KEY_AUTO_ADVANCE = booleanPreferencesKey("auto_advance_enabled")
         private val KEY_AUTO_CHECK_UPDATES = booleanPreferencesKey("auto_check_updates_enabled")
         private val KEY_DEV_MODE = booleanPreferencesKey("dev_mode_enabled")
+        private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches_json")
     }
 
     val themeModeFlow: Flow<ThemeMode> = dataStore.data.map { prefs ->
@@ -62,6 +64,19 @@ class AppSettings(context: Context) {
         prefs[KEY_DEV_MODE] ?: false
     }
 
+    /** คำค้นหาล่าสุด เรียงใหม่สุดอยู่บนสุด — เก็บเป็น JSON array ในค่า string เดียว (ไม่ใช้ Set เพราะ Set ไม่รักษาลำดับ) */
+    val recentSearchesFlow: Flow<List<String>> = dataStore.data.map { prefs ->
+        decodeRecentSearches(prefs[KEY_RECENT_SEARCHES])
+    }
+
+    private fun decodeRecentSearches(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { array.getString(it) }
+        }.getOrDefault(emptyList())
+    }
+
     suspend fun setThemeMode(mode: ThemeMode) {
         dataStore.edit { prefs -> prefs[KEY_THEME_MODE] = mode.name }
     }
@@ -84,6 +99,31 @@ class AppSettings(context: Context) {
 
     suspend fun setDevModeEnabled(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_DEV_MODE] = enabled }
+    }
+
+    /** เพิ่มคำค้นหาไว้บนสุด, ตัดคำซ้ำเดิมทิ้ง (ไม่สนตัวพิมพ์เล็ก/ใหญ่), ตัดให้เหลือแค่ MAX_RECENT_SEARCHES คำ */
+    suspend fun addRecentSearch(query: String) {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) return
+
+        dataStore.edit { prefs ->
+            val current = decodeRecentSearches(prefs[KEY_RECENT_SEARCHES])
+            val updated = (listOf(trimmed) + current.filterNot { it.equals(trimmed, ignoreCase = true) })
+                .take(AppConstants.MAX_RECENT_SEARCHES)
+            prefs[KEY_RECENT_SEARCHES] = JSONArray(updated).toString()
+        }
+    }
+
+    suspend fun removeRecentSearch(query: String) {
+        dataStore.edit { prefs ->
+            val current = decodeRecentSearches(prefs[KEY_RECENT_SEARCHES])
+            val updated = current.filterNot { it == query }
+            prefs[KEY_RECENT_SEARCHES] = JSONArray(updated).toString()
+        }
+    }
+
+    suspend fun clearRecentSearches() {
+        dataStore.edit { prefs -> prefs.remove(KEY_RECENT_SEARCHES) }
     }
 
     /** ล้างค่าตั้งค่าทั้งหมดกลับเป็นค่าเริ่มต้น (ปุ่มในโหมดนักพัฒนา) */

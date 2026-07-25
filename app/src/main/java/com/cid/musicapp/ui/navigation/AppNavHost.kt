@@ -25,6 +25,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
+import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.R
 import com.cid.musicapp.di.AppContainer
 import com.cid.musicapp.player.PlaybackUiState
@@ -68,6 +72,7 @@ fun AppNavHost(container: AppContainer) {
     )
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     // นำทางไปแท็บหนึ่งๆ ด้วยกฎเดียวกันเสมอ ไม่ว่าจะกดจาก bottom nav, กดเพลงในผลค้นหา, หรือกด mini-player
     // (เดิมกดเพลง/mini-player ใช้ navigate() เปล่าๆ ส่วน bottom nav ใช้ popUpTo+restoreState — ผสมกัน
@@ -131,14 +136,25 @@ fun AppNavHost(container: AppContainer) {
                 composable(ROUTE_SEARCH) {
                     val viewModel: SearchViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { SearchViewModel(container.musicRepository) }
+                            initializer { SearchViewModel(container.musicRepository, container.appSettings) }
                         }
                     )
+                    val addedToQueueMessage = stringResource(R.string.search_added_to_queue)
+                    val playsNextMessage = stringResource(R.string.search_plays_next)
+
                     SearchScreen(
                         viewModel = viewModel,
                         onTrackSelected = { tracks, index ->
                             container.playerController.playQueue(tracks, index)
                             navigateToTab(ROUTE_PLAYER)
+                        },
+                        onAddToQueue = { track ->
+                            container.playerController.addToQueue(track)
+                            coroutineScope.launch { snackbarHostState.showSnackbar(addedToQueueMessage) }
+                        },
+                        onPlayNext = { track ->
+                            container.playerController.playNext(track)
+                            coroutineScope.launch { snackbarHostState.showSnackbar(playsNextMessage) }
                         }
                     )
                 }
@@ -177,40 +193,58 @@ private fun MiniPlayerBar(
     onTogglePlayPause: () -> Unit,
     onClick: () -> Unit
 ) {
-    Row(
+    val progress = if (state.durationMs > 0) {
+        (state.positionMs.toFloat() / state.durationMs.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = state.currentThumbnailUrl,
-            contentDescription = null,
-            modifier = Modifier.size(40.dp)
+        // แถบบางๆ บอกความคืบหน้าเพลงปัจจุบัน (เหมือน Spotify) — ให้เห็นเหลืออีกนานแค่ไหนโดยไม่ต้องเข้าไปหน้า Player
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth().height(2.dp)
         )
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                state.currentTitle ?: "",
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(state.currentThumbnailUrl)
+                    .crossfade(AppConstants.IMAGE_CROSSFADE_MILLIS)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier.size(40.dp)
             )
-            Text(
-                state.currentArtist ?: "",
-                style = MaterialTheme.typography.labelSmall,
-                maxLines = 1
-            )
-        }
-        if (state.isResolving) {
-            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-        } else {
-            IconButton(onClick = onTogglePlayPause) {
-                Icon(
-                    imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = null
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    state.currentTitle ?: "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1
                 )
+                Text(
+                    state.currentArtist ?: "",
+                    style = MaterialTheme.typography.labelSmall,
+                    maxLines = 1
+                )
+            }
+            if (state.isResolving) {
+                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+            } else {
+                IconButton(onClick = onTogglePlayPause) {
+                    Icon(
+                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = null
+                    )
+                }
             }
         }
     }

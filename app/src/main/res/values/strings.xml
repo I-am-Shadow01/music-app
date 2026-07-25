@@ -4,6 +4,17 @@
     <string name="search_placeholder">ค้นหาเพลง…</string>
     <string name="search_empty_state">พิมพ์ชื่อเพลงหรือศิลปินเพื่อค้นหา</string>
     <string name="search_error">ค้นหาไม่สำเร็จ ลองใหม่อีกครั้ง</string>
+    <string name="search_retry_button">ลองอีกครั้ง</string>
+    <string name="search_clear_query">ล้างคำค้นหา</string>
+    <string name="search_recent_title">ค้นหาล่าสุด</string>
+    <string name="search_recent_clear_all">ล้างประวัติ</string>
+    <string name="search_recent_remove">ลบออกจากประวัติ</string>
+    <string name="search_play_now">เล่นเลย</string>
+    <string name="search_play_next">เล่นต่อจากนี้</string>
+    <string name="search_add_to_queue">เพิ่มเข้าคิว</string>
+    <string name="search_added_to_queue">เพิ่มเข้าคิวแล้ว</string>
+    <string name="search_plays_next">จะเล่นต่อจากเพลงนี้</string>
+    <string name="search_no_results">ไม่พบผลลัพธ์สำหรับคำนี้</string>
 
     <string name="player_no_track">ยังไม่มีเพลงที่กำลังเล่น</string>
     <string name="player_play">เล่น</string>

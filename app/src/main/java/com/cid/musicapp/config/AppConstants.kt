@@ -34,4 +34,14 @@ object AppConstants {
 
     // --- สีหลักของธีม (ARGB) ---
     const val DEFAULT_ACCENT_COLOR_ARGB = 0xFF7C4DFF.toInt()
+
+    // --- ประวัติการค้นหา ---
+    const val MAX_RECENT_SEARCHES = 10 // เก็บคำค้นหาล่าสุดกี่คำ (ใหม่สุดอยู่บนสุด, ไม่ซ้ำคำเดิม)
+
+    // --- โหลดผลค้นหาหน้าถัดไปอัตโนมัติ (infinite scroll) ---
+    // เลื่อนจนเหลือรายการท้ายลิสต์เท่านี้ตัว ให้เริ่มโหลดหน้าถัดไปล่วงหน้า กันผู้ใช้เห็นลิสต์ค้างตอนเลื่อนสุด
+    const val SEARCH_LOAD_MORE_THRESHOLD_ITEMS = 5
+
+    // --- ระยะ crossfade ตอนโหลดรูป thumbnail เสร็จ (Coil) ---
+    const val IMAGE_CROSSFADE_MILLIS = 200
 }
