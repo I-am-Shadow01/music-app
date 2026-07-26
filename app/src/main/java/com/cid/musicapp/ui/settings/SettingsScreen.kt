@@ -4,18 +4,32 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Brightness6
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.DeveloperMode
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlayCircleOutline
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -38,13 +52,16 @@ fun SettingsScreen(
     val updateUiState by updateViewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
+    var showResetConfirm by remember { mutableStateOf(false) }
+    var showClearCacheConfirm by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(20.dp)
     ) {
-        SettingsSection(title = stringResource(R.string.settings_theme_title)) {
+        SettingsSection(title = stringResource(R.string.settings_theme_title), icon = Icons.Default.Brightness6) {
             ThemeMode.entries.forEach { mode ->
                 SettingsRadioRow(
                     label = when (mode) {
@@ -58,18 +75,18 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSection(title = stringResource(R.string.settings_accent_color_title)) {
+        SettingsSection(title = stringResource(R.string.settings_accent_color_title), icon = Icons.Default.Palette) {
             AccentColorPicker(
                 currentArgb = uiState.accentColorArgb,
                 onColorChange = { viewModel.setAccentColorArgb(it) }
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSection(title = stringResource(R.string.settings_audio_quality_title)) {
+        SettingsSection(title = stringResource(R.string.settings_audio_quality_title), icon = Icons.Default.GraphicEq) {
             // ตำแหน่งระหว่างลากนิ้ว ใช้ค่านี้แทนค่าจริงชั่วคราว กันยิง setAudioBitrateKbps ถี่เกินไป
             var dragKbps by remember { mutableStateOf<Float?>(null) }
             val displayedKbps = dragKbps?.toInt() ?: uiState.audioBitrateKbps
@@ -93,9 +110,9 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSection(title = stringResource(R.string.settings_playback_title)) {
+        SettingsSection(title = stringResource(R.string.settings_playback_title), icon = Icons.Default.PlayCircleOutline) {
             SettingsSwitchRow(
                 label = stringResource(R.string.settings_auto_advance),
                 checked = uiState.autoAdvanceEnabled,
@@ -103,11 +120,20 @@ fun SettingsScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSection(title = stringResource(R.string.settings_cache_title)) {
+        SettingsSection(title = stringResource(R.string.settings_cache_title), icon = Icons.Default.DeleteSweep) {
+            val cachedCount = viewModel.cachedStreamCount()
+            Text(
+                stringResource(R.string.settings_cache_count, cachedCount),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedButton(onClick = { viewModel.clearCache() }) {
+                OutlinedButton(
+                    onClick = { showClearCacheConfirm = true },
+                    enabled = cachedCount > 0
+                ) {
                     Text(stringResource(R.string.settings_clear_cache_button))
                 }
                 if (uiState.cacheClearedJustNow) {
@@ -118,11 +144,32 @@ fun SettingsScreen(
                     )
                 }
             }
+
+            if (showClearCacheConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showClearCacheConfirm = false },
+                    title = { Text(stringResource(R.string.settings_clear_cache_confirm_title)) },
+                    text = { Text(stringResource(R.string.settings_clear_cache_confirm_body, cachedCount)) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.clearCache()
+                            showClearCacheConfirm = false
+                        }) {
+                            Text(stringResource(R.string.settings_clear_cache_button))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showClearCacheConfirm = false }) {
+                            Text(stringResource(R.string.settings_cancel))
+                        }
+                    }
+                )
+            }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSection(title = stringResource(R.string.settings_update_title)) {
+        SettingsSection(title = stringResource(R.string.settings_update_title), icon = Icons.Default.SystemUpdate) {
             SettingsSwitchRow(
                 label = stringResource(R.string.settings_auto_check_updates),
                 checked = uiState.autoCheckUpdatesEnabled,
@@ -152,9 +199,9 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSection(title = stringResource(R.string.settings_about_title)) {
+        SettingsSection(title = stringResource(R.string.settings_about_title), icon = Icons.Default.Info) {
             Text(
                 stringResource(R.string.settings_build_number, BuildConfig.BUILD_NUMBER),
                 style = MaterialTheme.typography.bodyMedium
@@ -171,9 +218,9 @@ fun SettingsScreen(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-        SettingsSection(title = stringResource(R.string.settings_dev_mode_title)) {
+        SettingsSection(title = stringResource(R.string.settings_dev_mode_title), icon = Icons.Default.DeveloperMode) {
             SettingsSwitchRow(
                 label = stringResource(R.string.settings_dev_mode_toggle),
                 checked = uiState.devModeEnabled,
@@ -185,7 +232,10 @@ fun SettingsScreen(
                 DeveloperPanel(
                     viewModel = viewModel,
                     uiState = uiState,
-                    playbackState = playbackState
+                    playbackState = playbackState,
+                    showResetConfirm = showResetConfirm,
+                    onRequestReset = { showResetConfirm = true },
+                    onDismissResetConfirm = { showResetConfirm = false }
                 )
             }
         }
@@ -196,7 +246,10 @@ fun SettingsScreen(
 private fun DeveloperPanel(
     viewModel: SettingsViewModel,
     uiState: SettingsUiState,
-    playbackState: PlaybackUiState
+    playbackState: PlaybackUiState,
+    showResetConfirm: Boolean,
+    onRequestReset: () -> Unit,
+    onDismissResetConfirm: () -> Unit
 ) {
     Column {
         Text(stringResource(R.string.settings_dev_app_info_title), style = MaterialTheme.typography.titleMedium)
@@ -229,7 +282,7 @@ private fun DeveloperPanel(
         Spacer(modifier = Modifier.height(16.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedButton(onClick = { viewModel.resetAllSettings() }) {
+            OutlinedButton(onClick = onRequestReset) {
                 Text(stringResource(R.string.settings_dev_reset_button))
             }
             if (uiState.settingsResetJustNow) {
@@ -239,6 +292,27 @@ private fun DeveloperPanel(
                     style = MaterialTheme.typography.labelSmall
                 )
             }
+        }
+
+        if (showResetConfirm) {
+            AlertDialog(
+                onDismissRequest = onDismissResetConfirm,
+                title = { Text(stringResource(R.string.settings_dev_reset_confirm_title)) },
+                text = { Text(stringResource(R.string.settings_dev_reset_confirm_body)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.resetAllSettings()
+                        onDismissResetConfirm()
+                    }) {
+                        Text(stringResource(R.string.settings_dev_reset_button))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = onDismissResetConfirm) {
+                        Text(stringResource(R.string.settings_cancel))
+                    }
+                }
+            )
         }
     }
 }
@@ -264,6 +338,10 @@ private fun AccentColorPicker(currentArgb: Int, onColorChange: (Int) -> Unit) {
         out
     }
 
+    val isPreset = remember(currentArgb) { ACCENT_PRESET_COLORS.any { it.toArgb() == currentArgb } }
+    // เปิด custom picker ไว้ล่วงหน้าถ้าสีปัจจุบันไม่ตรงกับ preset ไหนเลย กันผู้ใช้งงว่าสีตัวเองหายไปไหน
+    var customExpanded by remember { mutableStateOf(!isPreset) }
+
     var dragHue by remember { mutableStateOf<Float?>(null) }
     var dragSaturation by remember { mutableStateOf<Float?>(null) }
     var dragLightness by remember { mutableStateOf<Float?>(null) }
@@ -281,68 +359,107 @@ private fun AccentColorPicker(currentArgb: Int, onColorChange: (Int) -> Unit) {
     }
 
     Text(stringResource(R.string.settings_accent_custom_hint), style = MaterialTheme.typography.labelSmall)
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(10.dp))
 
-    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         ACCENT_PRESET_COLORS.forEach { preset ->
             val presetArgb = preset.toArgb()
+            val selected = presetArgb == currentArgb
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(48.dp)
                     .background(preset, shape = CircleShape)
-                    .clickable { onColorChange(presetArgb) }
-            )
+                    .then(
+                        if (selected) {
+                            Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .clickable { onColorChange(presetArgb) },
+                contentAlignment = Alignment.Center
+            ) {
+                if (selected) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = null,
+                        tint = Color.White
+                    )
+                }
+            }
         }
     }
 
-    Spacer(modifier = Modifier.height(16.dp))
+    Spacer(modifier = Modifier.height(12.dp))
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .background(Color(currentArgb), shape = CircleShape)
+    TextButton(onClick = { customExpanded = !customExpanded }) {
+        Text(stringResource(R.string.settings_accent_custom_toggle))
+        Spacer(modifier = Modifier.width(4.dp))
+        Icon(
+            imageVector = if (customExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+            contentDescription = null
         )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text("#" + Integer.toHexString(currentArgb).uppercase(), style = MaterialTheme.typography.bodyMedium)
     }
 
-    Spacer(modifier = Modifier.height(8.dp))
+    if (customExpanded) {
+        Spacer(modifier = Modifier.height(4.dp))
 
-    Text(stringResource(R.string.settings_accent_hue), style = MaterialTheme.typography.labelSmall)
-    Slider(
-        value = hue,
-        valueRange = 0f..360f,
-        onValueChange = { dragHue = it },
-        onValueChangeFinished = { commit() }
-    )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(Color(currentArgb), shape = CircleShape)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text("#" + Integer.toHexString(currentArgb).uppercase(), style = MaterialTheme.typography.bodyMedium)
+        }
 
-    Text(stringResource(R.string.settings_accent_saturation), style = MaterialTheme.typography.labelSmall)
-    Slider(
-        value = saturation,
-        valueRange = 0f..1f,
-        onValueChange = { dragSaturation = it },
-        onValueChangeFinished = { commit() }
-    )
+        Spacer(modifier = Modifier.height(8.dp))
 
-    Text(stringResource(R.string.settings_accent_lightness), style = MaterialTheme.typography.labelSmall)
-    Slider(
-        value = lightness,
-        valueRange = 0f..1f,
-        onValueChange = { dragLightness = it },
-        onValueChangeFinished = { commit() }
-    )
+        Text(stringResource(R.string.settings_accent_hue), style = MaterialTheme.typography.labelSmall)
+        Slider(
+            value = hue,
+            valueRange = 0f..360f,
+            onValueChange = { dragHue = it },
+            onValueChangeFinished = { commit() }
+        )
+
+        Text(stringResource(R.string.settings_accent_saturation), style = MaterialTheme.typography.labelSmall)
+        Slider(
+            value = saturation,
+            valueRange = 0f..1f,
+            onValueChange = { dragSaturation = it },
+            onValueChangeFinished = { commit() }
+        )
+
+        Text(stringResource(R.string.settings_accent_lightness), style = MaterialTheme.typography.labelSmall)
+        Slider(
+            value = lightness,
+            valueRange = 0f..1f,
+            onValueChange = { dragLightness = it },
+            onValueChangeFinished = { commit() }
+        )
+    }
 }
 
 @Composable
-private fun SettingsSection(title: String, content: @Composable () -> Unit) {
+private fun SettingsSection(title: String, icon: ImageVector, content: @Composable () -> Unit) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(title, style = MaterialTheme.typography.titleMedium)
+            }
+            Spacer(modifier = Modifier.height(10.dp))
             content()
         }
     }

@@ -47,6 +47,7 @@
     <string name="settings_accent_hue">เฉดสี (Hue)</string>
     <string name="settings_accent_saturation">ความสด (Saturation)</string>
     <string name="settings_accent_lightness">ความสว่าง (Lightness)</string>
+    <string name="settings_accent_custom_toggle">กำหนดเอง</string>
 
     <string name="settings_audio_quality_title">คุณภาพเสียง</string>
     <string name="settings_audio_quality_value">%1$d kbps</string>
@@ -56,8 +57,12 @@
     <string name="settings_auto_advance">เล่นเพลงถัดไปในคิวต่อเองเมื่อจบเพลง</string>
 
     <string name="settings_cache_title">แคชเพลง</string>
+    <string name="settings_cache_count">แคชลิงก์เสียงไว้ %1$d รายการ</string>
     <string name="settings_clear_cache_button">ล้างแคชลิงก์เสียง</string>
+    <string name="settings_clear_cache_confirm_title">ล้างแคชลิงก์เสียง?</string>
+    <string name="settings_clear_cache_confirm_body">ลิงก์เสียงที่บันทึกไว้ %1$d รายการจะถูกลบ เพลงที่เพิ่งเล่นอาจต้องโหลดลิงก์ใหม่อีกครั้งตอนเล่นครั้งถัดไป</string>
     <string name="settings_cache_cleared">ล้างแคชแล้ว</string>
+    <string name="settings_cancel">ยกเลิก</string>
 
     <string name="settings_update_title">อัปเดตแอป</string>
     <string name="settings_auto_check_updates">เช็คอัปเดตอัตโนมัติตอนเปิดแอป</string>
@@ -73,5 +78,7 @@
     <string name="settings_dev_app_info_title">ข้อมูลแอป</string>
     <string name="settings_dev_playback_info_title">สถานะการเล่นเพลง</string>
     <string name="settings_dev_reset_button">รีเซ็ตค่าตั้งค่าทั้งหมด</string>
+    <string name="settings_dev_reset_confirm_title">รีเซ็ตการตั้งค่าทั้งหมด?</string>
+    <string name="settings_dev_reset_confirm_body">ธีม สีหลัก คุณภาพเสียง และค่าตั้งค่าอื่นๆ ทั้งหมดจะกลับไปเป็นค่าเริ่มต้น แก้คืนไม่ได้</string>
     <string name="settings_dev_reset_done">รีเซ็ตแล้ว</string>
 </resources>
