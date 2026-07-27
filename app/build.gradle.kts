@@ -89,6 +89,8 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer:1.4.1")
     implementation("androidx.media3:media3-session:1.4.1")
     implementation("androidx.media3:media3-common:1.4.1")
+    // PlayerView (video surface) — ใช้เฉพาะโหมดวิดีโอในหน้ากำลังเล่น
+    implementation("androidx.media3:media3-ui:1.4.1")
 
     // ค้นหา + ดึงลิงก์เสียงจาก YouTube โดยตรงในแอป (ไม่ง้อ backend แยก)
     // NewValve = ตัวห่อ NewPipeExtractor ให้พร้อมใช้กับ OkHttp ทันที

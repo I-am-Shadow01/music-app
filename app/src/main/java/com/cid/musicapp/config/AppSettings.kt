@@ -32,6 +32,8 @@ class AppSettings(context: Context) {
         private val KEY_AUTO_CHECK_UPDATES = booleanPreferencesKey("auto_check_updates_enabled")
         private val KEY_DEV_MODE = booleanPreferencesKey("dev_mode_enabled")
         private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches_json")
+        private val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color_enabled")
+        private val KEY_VIDEO_HEIGHT_PX = intPreferencesKey("video_height_px")
     }
 
     val themeModeFlow: Flow<ThemeMode> = dataStore.data.map { prefs ->
@@ -69,6 +71,16 @@ class AppSettings(context: Context) {
         decodeRecentSearches(prefs[KEY_RECENT_SEARCHES])
     }
 
+    /** ใช้สีธีมจากวอลเปเปอร์เครื่อง (Material You) แทนสี accent ที่เลือกเอง — มีผลเฉพาะ Android 12+ เท่านั้น */
+    val dynamicColorEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_DYNAMIC_COLOR] ?: false
+    }
+
+    /** คุณภาพวิดีโอเป้าหมายตอนเล่นโหมดวิดีโอ เก็บเป็นความสูง px ตรงๆ (เช่น 480 = 480p) */
+    val videoHeightPxFlow: Flow<Int> = dataStore.data.map { prefs ->
+        prefs[KEY_VIDEO_HEIGHT_PX] ?: AppConstants.DEFAULT_VIDEO_HEIGHT_PX
+    }
+
     private fun decodeRecentSearches(raw: String?): List<String> {
         if (raw.isNullOrBlank()) return emptyList()
         return runCatching {
@@ -99,6 +111,14 @@ class AppSettings(context: Context) {
 
     suspend fun setDevModeEnabled(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_DEV_MODE] = enabled }
+    }
+
+    suspend fun setDynamicColorEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_DYNAMIC_COLOR] = enabled }
+    }
+
+    suspend fun setVideoHeightPx(heightPx: Int) {
+        dataStore.edit { prefs -> prefs[KEY_VIDEO_HEIGHT_PX] = heightPx }
     }
 
     /** เพิ่มคำค้นหาไว้บนสุด, ตัดคำซ้ำเดิมทิ้ง (ไม่สนตัวพิมพ์เล็ก/ใหญ่), ตัดให้เหลือแค่ MAX_RECENT_SEARCHES คำ */

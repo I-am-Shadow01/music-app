@@ -12,6 +12,7 @@ import org.schabi.newpipe.extractor.ServiceList
 import org.schabi.newpipe.extractor.search.SearchExtractor
 import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import org.schabi.newpipe.extractor.stream.VideoStream
 import kotlin.math.abs
 
 /** ผลค้นหาหนึ่งหน้า พร้อมบอกว่ายังมีหน้าถัดไปให้โหลดเพิ่มไหม (ใช้ทำ infinite scroll) */
@@ -123,6 +124,46 @@ class MusicRepository(private val appSettings: AppSettings) {
         val targetBps = targetKbps * 1000
         return streams.minByOrNull { abs(it.averageBitrate - targetBps) }
     }
+
+    /**
+     * ดึงลิงก์วิดีโอ (มีเสียงในตัว) สำหรับโหมดวิดีโอ
+     * ใช้เฉพาะ `videoStreams` (muxed audio+video) เท่านั้น — ไม่ใช้ `videoOnlyStreams` (ที่คุณภาพสูงกว่า
+     * แต่แยกไฟล์เสียง/วิดีโอคนละสตรีม) เพราะการเล่นคู่กันต้องใช้ MergingMediaSource เพิ่ม ซึ่งเพิ่มความซับซ้อน
+     * ของ PlaybackService ไม่คุ้มกับโปรเจกต์ขนาดนี้ตอนนี้
+     * TODO(debt): ถ้าต้องการวิดีโอความละเอียดสูงกว่า 720p ในอนาคต ค่อยเปลี่ยนมาใช้ videoOnlyStreams
+     * + MergingMediaSource(videoSource, audioSource) แทน
+     */
+    suspend fun resolveVideoStreamUrl(track: Track): String = withContext(Dispatchers.IO) {
+        ensureInitialized()
+
+        val targetHeightPx = appSettings.videoHeightPxFlow.first()
+        val cacheKey = "${track.id}:video:$targetHeightPx"
+
+        val cached = streamUrlCache[cacheKey]
+        val now = System.currentTimeMillis()
+        if (cached != null && now - cached.second < cacheTtlMillis) {
+            return@withContext cached.first
+        }
+
+        val extractor = youtube.getStreamExtractor(track.id)
+        extractor.fetchPage()
+
+        val chosen = selectStreamForHeight(extractor.videoStreams, targetHeightPx)
+            ?: throw IllegalStateException("ไม่พบสตรีมวิดีโอสำหรับเพลงนี้")
+
+        streamUrlCache[cacheKey] = chosen.content to now
+        chosen.content
+    }
+
+    /** เลือกสตรีมวิดีโอที่ความสูง (px) ใกล้เคียงเป้าหมายที่สุด */
+    private fun selectStreamForHeight(streams: List<VideoStream>, targetHeightPx: Int): VideoStream? {
+        if (streams.isEmpty()) return null
+        return streams.minByOrNull { abs(parseResolutionHeight(it.resolution) - targetHeightPx) }
+    }
+
+    /** แปลง resolution string ของ NewPipeExtractor (เช่น "720p60", "480p") เป็นความสูง px ล้วนๆ */
+    private fun parseResolutionHeight(resolution: String): Int =
+        resolution.takeWhile { it.isDigit() }.toIntOrNull() ?: 0
 
     /** ล้างแคชลิงก์เสียงที่ resolve ไว้ทั้งหมด (เรียกจากหน้าตั้งค่า) */
     fun clearStreamCache() {

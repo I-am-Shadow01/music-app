@@ -2,9 +2,11 @@ package com.cid.musicapp.ui.navigation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -15,6 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -111,6 +117,9 @@ fun AppNavHost(container: AppContainer) {
                     MiniPlayerBar(
                         state = playbackState,
                         onTogglePlayPause = { container.playerController.togglePlayPause() },
+                        onNext = { container.playerController.next() },
+                        onPrevious = { container.playerController.previous() },
+                        onDismiss = { container.playerController.stopAndDismiss() },
                         onClick = { openPlayer() }
                     )
                 }
@@ -201,6 +210,9 @@ fun AppNavHost(container: AppContainer) {
 private fun MiniPlayerBar(
     state: PlaybackUiState,
     onTogglePlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
+    onDismiss: () -> Unit,
     onClick: () -> Unit
 ) {
     val progress = if (state.durationMs > 0) {
@@ -209,6 +221,10 @@ private fun MiniPlayerBar(
         0f
     }
     val shape = RoundedCornerShape(16.dp)
+    val haptic = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val swipeThresholdPx = with(density) { AppConstants.MINI_PLAYER_SWIPE_THRESHOLD_DP.dp.toPx() }
+    var dragAccumulatorPx by remember { mutableFloatStateOf(0f) }
 
     Column(
         modifier = Modifier
@@ -218,6 +234,28 @@ private fun MiniPlayerBar(
             .shadow(elevation = 6.dp, shape = shape, clip = false)
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
+            .pointerInput(Unit) {
+                // ปัดซ้าย = เพลงถัดไป, ปัดขวา = เพลงก่อนหน้า — เหมือนแอปเพลงทั่วไป
+                detectHorizontalDragGestures(
+                    onDragEnd = {
+                        when {
+                            dragAccumulatorPx <= -swipeThresholdPx -> {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onNext()
+                            }
+                            dragAccumulatorPx >= swipeThresholdPx -> {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onPrevious()
+                            }
+                        }
+                        dragAccumulatorPx = 0f
+                    },
+                    onHorizontalDrag = { change, dragAmount ->
+                        change.consume()
+                        dragAccumulatorPx += dragAmount
+                    }
+                )
+            }
             .clickable(onClick = onClick)
     ) {
         // แถบบางๆ บอกความคืบหน้าเพลงปัจจุบัน (เหมือน Spotify) — ให้เห็นเหลืออีกนานแค่ไหนโดยไม่ต้องเข้าไปหน้า Player
@@ -261,6 +299,12 @@ private fun MiniPlayerBar(
                         contentDescription = null
                     )
                 }
+            }
+            IconButton(onClick = onDismiss) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = stringResource(R.string.mini_player_dismiss)
+                )
             }
         }
     }

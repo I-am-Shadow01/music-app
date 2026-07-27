@@ -26,6 +26,22 @@
     <string name="player_up_next">ถัดไป</string>
     <string name="player_collapse">พับหน้าจอเล่นเพลง</string>
     <string name="player_now_playing_header">กำลังเล่น</string>
+    <string name="player_seek_backward">ถอยหลัง 10 วินาที</string>
+    <string name="player_seek_forward">เดินหน้า 10 วินาที</string>
+    <string name="player_playback_speed">ความเร็วเล่นเพลง %1$.2fx</string>
+    <string name="player_switch_to_video">สลับไปโหมดวิดีโอ</string>
+    <string name="player_switch_to_audio">สลับไปโหมดเสียง</string>
+    <string name="player_remove_from_queue">ลบออกจากคิว</string>
+    <string name="player_reorder_handle">ลากเพื่อสลับลำดับ</string>
+    <string name="player_removed_from_queue">ลบเพลงออกจากคิวแล้ว</string>
+
+    <string name="mini_player_dismiss">หยุดเล่นและปิดแถบเพลง</string>
+
+    <string name="settings_dynamic_color_title">ใช้สีจากวอลเปเปอร์ (Material You)</string>
+    <string name="settings_dynamic_color_unsupported">รองรับเฉพาะ Android 12 ขึ้นไป</string>
+    <string name="settings_video_quality_title">คุณภาพวิดีโอ</string>
+    <string name="settings_video_quality_value">%1$dp</string>
+    <string name="settings_video_quality_hint">ใช้เมื่อเล่นในโหมดวิดีโอเท่านั้น — ค่าที่ตั้งสูงกว่าที่มีจริงจะได้คุณภาพสูงสุดที่มีให้อัตโนมัติ</string>
 
     <string name="nav_search">ค้นหา</string>
     <string name="nav_player">กำลังเล่น</string>

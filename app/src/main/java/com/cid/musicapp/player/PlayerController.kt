@@ -26,6 +26,9 @@ import kotlin.coroutines.resume
 
 enum class RepeatMode { OFF, ALL, ONE }
 
+/** โหมดการเล่น — AUDIO เล่นเสียงล้วน (ปกติ), VIDEO เล่นวิดีโอ (มีเสียงในตัว) ให้ดูภาพประกอบด้วย */
+enum class PlaybackMode { AUDIO, VIDEO }
+
 /** เพลงที่กำลังจะเล่นถัดไปในคิว พร้อมตำแหน่งใน play-order (ใช้กดข้ามไปเล่นตรงๆ ได้) */
 data class UpcomingItem(val orderPosition: Int, val track: Track)
 
@@ -42,7 +45,12 @@ data class PlaybackUiState(
     val hasPrevious: Boolean = false,
     val isShuffleEnabled: Boolean = false,
     val repeatMode: RepeatMode = RepeatMode.OFF,
-    val upcoming: List<UpcomingItem> = emptyList()
+    val upcoming: List<UpcomingItem> = emptyList(),
+    val playbackMode: PlaybackMode = PlaybackMode.AUDIO,
+    val playbackSpeed: Float = AppConstants.DEFAULT_PLAYBACK_SPEED,
+    // session id ของ ExoPlayer ตอนนี้ — ใช้ผูก android.media.audiofx.Visualizer สำหรับ waveform เท่านั้น
+    // เปลี่ยนค่าทุกครั้งที่ต่อ MediaController ใหม่หรือสลับ media item บางกรณี
+    val audioSessionId: Int = 0
 )
 
 /**
@@ -67,6 +75,8 @@ class PlayerController(
 
     private var isShuffleEnabled = false
     private var repeatMode = RepeatMode.OFF
+    private var playbackMode = PlaybackMode.AUDIO
+    private var playbackSpeed = AppConstants.DEFAULT_PLAYBACK_SPEED
 
     private val _state = MutableStateFlow(PlaybackUiState())
     val state: StateFlow<PlaybackUiState> = _state
@@ -241,7 +251,8 @@ class PlayerController(
         _state.value = _state.value.copy(repeatMode = repeatMode)
     }
 
-    private suspend fun playCurrent() {
+    /** @param resumeAtMs ตำแหน่งที่จะ seek ไปทันทีหลังโหลดเสร็จ — ใช้ตอนสลับโหมดเสียง/วิดีโอกลางเพลง ไม่ใช่เริ่มเพลงใหม่ปกติ (ค่า default 0) */
+    private suspend fun playCurrent(resumeAtMs: Long = 0L) {
         val queueIndex = order.getOrNull(orderPosition) ?: return
         val track = queue.getOrNull(queueIndex) ?: return
 
@@ -252,7 +263,10 @@ class PlayerController(
         publishUpcoming()
 
         try {
-            val streamUrl = repository.resolveAudioStreamUrl(track)
+            val streamUrl = when (playbackMode) {
+                PlaybackMode.AUDIO -> repository.resolveAudioStreamUrl(track)
+                PlaybackMode.VIDEO -> repository.resolveVideoStreamUrl(track)
+            }
 
             val metadata = MediaMetadata.Builder()
                 .setTitle(track.title)
@@ -268,17 +282,73 @@ class PlayerController(
             controller?.apply {
                 setMediaItem(mediaItem)
                 prepare()
+                if (resumeAtMs > 0L) seekTo(resumeAtMs)
+                setPlaybackSpeed(playbackSpeed)
                 play()
             }
 
             _state.value = _state.value.copy(isResolving = false)
         } catch (e: Exception) {
+            val modeLabel = if (playbackMode == PlaybackMode.VIDEO) "วิดีโอ" else "เสียง"
             _state.value = _state.value.copy(
                 isResolving = false,
-                errorMessage = "เล่นเพลงนี้ไม่ได้: ${e.message ?: "เกิดข้อผิดพลาด"}"
+                errorMessage = "เล่น$modeLabelนี้ไม่ได้: ${e.message ?: "เกิดข้อผิดพลาด"}"
             )
         }
     }
+
+    /** สลับโหมดเสียง/วิดีโอ — โหลดสตรีมใหม่ตามโหมดที่เลือก แล้ว resume ต่อจากตำแหน่งเดิมที่ฟัง/ดูค้างไว้ */
+    fun setPlaybackMode(mode: PlaybackMode) {
+        if (playbackMode == mode) return
+        playbackMode = mode
+        _state.value = _state.value.copy(playbackMode = mode)
+        val resumeAtMs = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
+        scope.launch { playCurrent(resumeAtMs = resumeAtMs) }
+    }
+
+    /** ปรับความเร็วเล่นเพลง (1.0 = ปกติ) — มีผลทันทีกับเพลงที่กำลังเล่นอยู่ */
+    fun setPlaybackSpeed(speed: Float) {
+        playbackSpeed = speed
+        controller?.setPlaybackSpeed(speed)
+        _state.value = _state.value.copy(playbackSpeed = speed)
+    }
+
+    /** เลื่อนตำแหน่งเพลงไปข้างหน้า/ถอยหลังจากตำแหน่งปัจจุบัน (ค่าติดลบ = ถอยหลัง) เช่นปุ่ม +10s/-10s */
+    fun seekBy(deltaMs: Long) {
+        val player = controller ?: return
+        val target = (player.currentPosition + deltaMs).coerceIn(0L, player.duration.coerceAtLeast(0L))
+        seekTo(target)
+    }
+
+    /**
+     * ลบเพลงออกจากคิว "ถัดไป" ตามตำแหน่งใน play-order — ตั้งใจไม่ให้ลบเพลงที่กำลังเล่นอยู่ตรงนี้
+     * (ผู้ใช้ต้องกด next เองก่อนถ้าอยากข้าม) กัน state ของเพลงที่กำลังเล่นเพี้ยนกลางทาง
+     */
+    fun removeFromQueue(targetOrderPosition: Int) {
+        if (targetOrderPosition !in order.indices || targetOrderPosition == orderPosition) return
+
+        order = order.toMutableList().apply { removeAt(targetOrderPosition) }
+        if (targetOrderPosition < orderPosition) {
+            orderPosition -= 1
+        }
+        publishUpcoming()
+    }
+
+    /**
+     * ย้ายตำแหน่งเพลงในคิว "ถัดไป" (ลากสลับลำดับ) — เช่นเดียวกับ removeFromQueue ไม่ให้ย้าย
+     * เพลงที่กำลังเล่นอยู่ตรงนี้ผ่านทางนี้
+     */
+    fun moveQueueItem(fromOrderPosition: Int, toOrderPosition: Int) {
+        if (fromOrderPosition !in order.indices || toOrderPosition !in order.indices) return
+        if (fromOrderPosition == orderPosition || toOrderPosition == orderPosition) return
+        if (fromOrderPosition == toOrderPosition) return
+
+        order = order.toMutableList().apply { add(toOrderPosition, removeAt(fromOrderPosition)) }
+        publishUpcoming()
+    }
+
+    /** เปิดให้ UI ผูก Player เข้ากับ PlayerView ตอนโหมดวิดีโอ (MediaController implement Player อยู่แล้ว) */
+    fun rawPlayer(): Player? = controller
 
     private fun publishUpcoming() {
         val upcoming = ((orderPosition + 1)..order.lastIndex).mapNotNull { pos ->
@@ -299,6 +369,19 @@ class PlayerController(
         }
     }
 
+    /** หยุดเล่นเพลง ล้างคิวทั้งหมด และซ่อน mini player bar (กดปุ่มปิดที่ mini player) */
+    fun stopAndDismiss() {
+        controller?.apply {
+            pause()
+            stop()
+            clearMediaItems()
+        }
+        queue = emptyList()
+        order = emptyList()
+        orderPosition = -1
+        _state.value = PlaybackUiState()
+    }
+
     fun seekTo(positionMs: Long) {
         controller?.seekTo(positionMs)
         _state.value = _state.value.copy(positionMs = positionMs)
@@ -315,7 +398,8 @@ class PlayerController(
             currentArtist = player.mediaMetadata.artist?.toString(),
             currentThumbnailUrl = player.mediaMetadata.artworkUri?.toString(),
             positionMs = player.currentPosition.coerceAtLeast(0L),
-            durationMs = player.duration.coerceAtLeast(0L)
+            durationMs = player.duration.coerceAtLeast(0L),
+            audioSessionId = player.audioSessionId
         )
         publishUpcoming()
     }
