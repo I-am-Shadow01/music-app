@@ -95,6 +95,12 @@ class PlayerController(
                 }
             }
         }
+
+        // audioSessionId ไม่ใช่ getter บน Player เฉยๆ (มีแค่ใน ExoPlayer โดยเฉพาะ ซึ่ง MediaController
+        // ไม่ implement) ต้องดักจาก callback นี้แทนถึงจะได้ค่าที่ถูกต้องผ่าน MediaController
+        override fun onAudioSessionIdChanged(audioSessionId: Int) {
+            _state.value = _state.value.copy(audioSessionId = audioSessionId)
+        }
     }
 
     suspend fun connect() {
@@ -292,7 +298,7 @@ class PlayerController(
             val modeLabel = if (playbackMode == PlaybackMode.VIDEO) "วิดีโอ" else "เสียง"
             _state.value = _state.value.copy(
                 isResolving = false,
-                errorMessage = "เล่น$modeLabelนี้ไม่ได้: ${e.message ?: "เกิดข้อผิดพลาด"}"
+                errorMessage = "เล่น${modeLabel}นี้ไม่ได้: ${e.message ?: "เกิดข้อผิดพลาด"}"
             )
         }
     }
@@ -398,8 +404,8 @@ class PlayerController(
             currentArtist = player.mediaMetadata.artist?.toString(),
             currentThumbnailUrl = player.mediaMetadata.artworkUri?.toString(),
             positionMs = player.currentPosition.coerceAtLeast(0L),
-            durationMs = player.duration.coerceAtLeast(0L),
-            audioSessionId = player.audioSessionId
+            durationMs = player.duration.coerceAtLeast(0L)
+            // audioSessionId ไม่ได้อัปเดตตรงนี้ — มาจาก onAudioSessionIdChanged callback ด้านบนแทน
         )
         publishUpcoming()
     }
