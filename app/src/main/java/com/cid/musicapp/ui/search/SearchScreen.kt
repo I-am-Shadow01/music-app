@@ -1,6 +1,13 @@
 package com.cid.musicapp.ui.search
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -82,9 +89,7 @@ fun SearchScreen(
 
         when {
             uiState.isLoading -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
-                }
+                SearchResultsSkeleton()
             }
 
             uiState.errorMessage != null -> {
@@ -141,6 +146,57 @@ fun SearchScreen(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SearchResultsSkeleton(modifier: Modifier = Modifier) {
+    // shimmer แบบง่าย: วาบสว่าง-มืดสลับกันเรื่อยๆ แทนที่จะเป็น spinner กลมเฉยๆ ให้ผู้ใช้เห็นโครงร่างผลลัพธ์
+    // ที่กำลังจะมาก่อน (เหมือน YouTube/Spotify) ลดความรู้สึกว่าแอปค้าง
+    val transition = rememberInfiniteTransition(label = "search_skeleton")
+    val alpha by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.85f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "search_skeleton_alpha"
+    )
+    val placeholderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = alpha * 0.15f)
+
+    Column(modifier = modifier.fillMaxSize()) {
+        repeat(6) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(placeholderColor)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.7f)
+                            .height(16.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(placeholderColor)
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.4f)
+                            .height(12.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(placeholderColor)
+                    )
                 }
             }
         }

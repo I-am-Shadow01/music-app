@@ -82,6 +82,49 @@ fun SettingsScreen(
                 currentArgb = uiState.accentColorArgb,
                 onColorChange = { viewModel.setAccentColorArgb(it) }
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            val dynamicColorSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            SettingsSwitchRow(
+                label = stringResource(R.string.settings_dynamic_color_title),
+                checked = uiState.dynamicColorEnabled && dynamicColorSupported,
+                onCheckedChange = { viewModel.setDynamicColorEnabled(it) },
+                enabled = dynamicColorSupported
+            )
+            if (!dynamicColorSupported) {
+                Text(
+                    stringResource(R.string.settings_dynamic_color_unsupported),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SettingsSection(title = stringResource(R.string.settings_video_quality_title), icon = Icons.Default.PlayCircleOutline) {
+            // ตำแหน่งระหว่างลากนิ้ว ใช้ค่านี้แทนค่าจริงชั่วคราว กันยิง setVideoHeightPx ถี่เกินไป
+            var dragVideoHeight by remember { mutableStateOf<Float?>(null) }
+            val displayedVideoHeight = dragVideoHeight?.toInt() ?: uiState.videoHeightPx
+
+            Text(
+                stringResource(R.string.settings_video_quality_value, displayedVideoHeight),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Slider(
+                value = dragVideoHeight ?: uiState.videoHeightPx.toFloat(),
+                valueRange = AppConstants.MIN_VIDEO_HEIGHT_PX.toFloat()..AppConstants.MAX_VIDEO_HEIGHT_PX.toFloat(),
+                onValueChange = { dragVideoHeight = it },
+                onValueChangeFinished = {
+                    dragVideoHeight?.let { viewModel.setVideoHeightPx(it.toInt()) }
+                    dragVideoHeight = null
+                }
+            )
+            Text(
+                stringResource(R.string.settings_video_quality_hint),
+                style = MaterialTheme.typography.labelSmall
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -481,16 +524,21 @@ private fun SettingsRadioRow(label: String, selected: Boolean, onClick: () -> Un
 }
 
 @Composable
-private fun SettingsSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun SettingsSwitchRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(label, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }

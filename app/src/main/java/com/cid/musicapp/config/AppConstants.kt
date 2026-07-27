@@ -44,4 +44,29 @@ object AppConstants {
 
     // --- ระยะ crossfade ตอนโหลดรูป thumbnail เสร็จ (Coil) ---
     const val IMAGE_CROSSFADE_MILLIS = 200
+
+    // --- ค้นหาอัตโนมัติระหว่างพิมพ์ (debounce) ---
+    const val SEARCH_DEBOUNCE_MILLIS = 450L
+    const val SEARCH_AUTO_MIN_QUERY_LENGTH = 2 // พิมพ์สั้นกว่านี้ยังไม่ auto-search กันยิง request ถี่เกินไปโดยเปล่าประโยชน์
+
+    // --- ปุ่ม seek ไว/ถอยในหน้ากำลังเล่น ---
+    const val SEEK_STEP_MILLIS = 10_000L
+
+    // --- ตัวเลือกความเร็วเล่นเพลง (คูณ) วนไปเรื่อยๆ ทีละปุ่มกด ---
+    val PLAYBACK_SPEED_PRESETS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
+    const val DEFAULT_PLAYBACK_SPEED = 1.0f
+
+    // --- ระยะปัดที่ mini player ถือว่าเป็นการสั่งข้าม/ย้อนเพลง (px, แปลงจาก dp ตอนใช้งานจริง) ---
+    const val MINI_PLAYER_SWIPE_THRESHOLD_DP = 90f
+
+    // --- ช่วงคุณภาพวิดีโอที่ผู้ใช้ปรับได้ในหน้าตั้งค่า (ความสูงเป็น px เช่น 720 = 720p) ---
+    const val MIN_VIDEO_HEIGHT_PX = 144
+    const val MAX_VIDEO_HEIGHT_PX = 1080
+    const val DEFAULT_VIDEO_HEIGHT_PX = 480
+
+    // --- Waveform visualizer (android.media.audiofx.Visualizer) ---
+    // ต้องเป็นเลขยกกำลัง 2 ตามสเปคของคลาสนี้ (ดู Visualizer.getCaptureSizeRange())
+    const val WAVEFORM_CAPTURE_SIZE = 256
+    const val WAVEFORM_BAR_COUNT = 32
+    const val WAVEFORM_CAPTURE_RATE_HZ = 15
 }

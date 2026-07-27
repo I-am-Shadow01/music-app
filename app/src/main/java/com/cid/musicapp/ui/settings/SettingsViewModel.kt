@@ -18,7 +18,9 @@ data class SettingsUiState(
     val autoCheckUpdatesEnabled: Boolean = true,
     val devModeEnabled: Boolean = false,
     val cacheClearedJustNow: Boolean = false,
-    val settingsResetJustNow: Boolean = false
+    val settingsResetJustNow: Boolean = false,
+    val dynamicColorEnabled: Boolean = false,
+    val videoHeightPx: Int = AppConstants.DEFAULT_VIDEO_HEIGHT_PX
 )
 
 class SettingsViewModel(
@@ -60,6 +62,16 @@ class SettingsViewModel(
                 _uiState.value = _uiState.value.copy(devModeEnabled = enabled)
             }
         }
+        viewModelScope.launch {
+            appSettings.dynamicColorEnabledFlow.collect { enabled ->
+                _uiState.value = _uiState.value.copy(dynamicColorEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            appSettings.videoHeightPxFlow.collect { heightPx ->
+                _uiState.value = _uiState.value.copy(videoHeightPx = heightPx)
+            }
+        }
     }
 
     fun setThemeMode(mode: ThemeMode) {
@@ -84,6 +96,14 @@ class SettingsViewModel(
 
     fun setDevModeEnabled(enabled: Boolean) {
         viewModelScope.launch { appSettings.setDevModeEnabled(enabled) }
+    }
+
+    fun setDynamicColorEnabled(enabled: Boolean) {
+        viewModelScope.launch { appSettings.setDynamicColorEnabled(enabled) }
+    }
+
+    fun setVideoHeightPx(heightPx: Int) {
+        viewModelScope.launch { appSettings.setVideoHeightPx(heightPx) }
     }
 
     fun clearCache() {

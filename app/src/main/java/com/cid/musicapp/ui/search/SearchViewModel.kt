@@ -2,10 +2,12 @@ package com.cid.musicapp.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.MusicRepository
 import com.cid.musicapp.data.repository.Track
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
@@ -34,6 +36,10 @@ class SearchViewModel(
     // ผลของคำค้นหาล่าสุดที่ตอบเร็วกว่า ทำให้ผู้ใช้เห็นผลลัพธ์ผิดคำ
     private var searchJob: Job? = null
 
+    // job ของ debounce ค้นหาอัตโนมัติ — คนละตัวกับ searchJob เพราะตัวนี้แค่รอเวลาก่อนค่อยไปเรียก runSearch()
+    // (runSearch() เองเป็นคน cancel searchJob ของการค้นหาจริงอีกที)
+    private var autoSearchJob: Job? = null
+
     init {
         viewModelScope.launch {
             appSettings.recentSearchesFlow.collect { recent ->
@@ -44,9 +50,19 @@ class SearchViewModel(
 
     fun onQueryChange(newQuery: String) {
         _uiState.update { it.copy(query = newQuery) }
+
+        autoSearchJob?.cancel()
+        val trimmed = newQuery.trim()
+        if (trimmed.length >= AppConstants.SEARCH_AUTO_MIN_QUERY_LENGTH) {
+            autoSearchJob = viewModelScope.launch {
+                delay(AppConstants.SEARCH_DEBOUNCE_MILLIS)
+                runSearch(trimmed)
+            }
+        }
     }
 
     fun search() {
+        autoSearchJob?.cancel()
         runSearch(_uiState.value.query)
     }
 
