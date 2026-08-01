@@ -9,7 +9,10 @@ import com.cid.musicapp.data.repository.Track
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -30,6 +33,11 @@ class SearchViewModel(
 
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState
+
+    /** เพลงที่กดใจไว้ — ใช้เทียบว่าเพลงแต่ละแถวในผลค้นหาต้องโชว์หัวใจทึบหรือกลวง */
+    val favoriteIds: StateFlow<Set<String>> = appSettings.favoriteTracksFlow
+        .map { tracks -> tracks.map { it.id }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
     // job ของการค้นหา/โหลดเพิ่มที่กำลังทำงานอยู่ (ถ้ามี) — เก็บไว้เพื่อ cancel ตัวเก่าทิ้งเวลามีคำสั่งใหม่เข้ามา
     // กัน race condition: ถ้าไม่ cancel แล้วผู้ใช้ค้นหาซ้อนกันเร็วๆ ผลของคำค้นหาที่ตอบช้ากว่าอาจมาทับ
@@ -70,6 +78,10 @@ class SearchViewModel(
     fun onRecentSearchSelected(query: String) {
         _uiState.update { it.copy(query = query) }
         runSearch(query)
+    }
+
+    fun toggleFavorite(track: Track) {
+        viewModelScope.launch { appSettings.toggleFavorite(track) }
     }
 
     fun removeRecentSearch(query: String) {

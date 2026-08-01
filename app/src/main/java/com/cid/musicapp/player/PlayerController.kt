@@ -14,6 +14,7 @@ import com.cid.musicapp.data.repository.Track
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,6 +40,8 @@ data class PlaybackUiState(
     val currentTitle: String? = null,
     val currentArtist: String? = null,
     val currentThumbnailUrl: String? = null,
+    // id ของ track ที่กำลังเล่นอยู่ตอนนี้ — ใช้เทียบกับรายการเพลงโปรดเพื่อโชว์สถานะหัวใจใน PlayerScreen
+    val currentTrackId: String? = null,
     val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val hasNext: Boolean = false,
@@ -48,6 +51,8 @@ data class PlaybackUiState(
     val upcoming: List<UpcomingItem> = emptyList(),
     val playbackMode: PlaybackMode = PlaybackMode.AUDIO,
     val playbackSpeed: Float = AppConstants.DEFAULT_PLAYBACK_SPEED,
+    // เวลาที่เหลือก่อนเพลงจะหยุดเองอัตโนมัติ (sleep timer) — null = ไม่ได้ตั้งไว้
+    val sleepTimerRemainingMs: Long? = null,
     // session id ของ ExoPlayer ตอนนี้ — ใช้ผูก android.media.audiofx.Visualizer สำหรับ waveform เท่านั้น
     // เปลี่ยนค่าทุกครั้งที่ต่อ MediaController ใหม่หรือสลับ media item บางกรณี
     val audioSessionId: Int = 0
@@ -77,6 +82,14 @@ class PlayerController(
     private var repeatMode = RepeatMode.OFF
     private var playbackMode = PlaybackMode.AUDIO
     private var playbackSpeed = AppConstants.DEFAULT_PLAYBACK_SPEED
+
+    // job ของ playCurrent() ที่กำลังทำงานอยู่ (ถ้ามี) — cancel ตัวเก่าทิ้งทุกครั้งก่อนเริ่มตัวใหม่
+    // กัน race condition: ถ้าผู้ใช้กด next/previous รัวๆ เร็วกว่าที่ resolveAudioStreamUrl() แต่ละครั้ง
+    // จะตอบกลับ คำขอเก่าที่ตอบช้ากว่าอาจมาทับผลของคำขอล่าสุดที่ตอบเร็วกว่า ทำให้เพลงที่เล่นจริงกลาย
+    // เป็นเพลงผิดตัวจากที่ orderPosition ชี้ไว้ (เทียบเท่า pattern เดียวกับ searchJob ใน SearchViewModel)
+    private var playJob: Job? = null
+
+    private var sleepTimerJob: Job? = null
 
     private val _state = MutableStateFlow(PlaybackUiState())
     val state: StateFlow<PlaybackUiState> = _state
@@ -123,6 +136,13 @@ class PlayerController(
             )
         }
 
+        // รับคำสั่ง next/previous ที่มาจากนอกแอป (หน้าจอล็อก, บลูทูธ, ปุ่มหูฟัง) ผ่าน PlaybackBridge
+        // ดู PlaybackService (ForwardingPlayer) และ PlaybackBridge.kt สำหรับรายละเอียดเต็มๆ
+        PlaybackBridge.listener = object : PlaybackBridge.QueueNavigationListener {
+            override fun onSkipToNext() = next()
+            override fun onSkipToPrevious() = previous()
+        }
+
         startPositionTicker()
     }
 
@@ -152,7 +172,7 @@ class PlayerController(
             shuffleOrderKeepingCurrent()
         }
 
-        scope.launch { playCurrent() }
+        launchPlayCurrent()
     }
 
     /** เพิ่ม track ต่อท้ายคิว (เล่นหลังสุด) — ถ้ายังไม่มีคิวอยู่เลย ให้เริ่มเล่นทันทีแทน */
@@ -184,7 +204,7 @@ class PlayerController(
     fun playAtOrderPosition(targetOrderPosition: Int) {
         if (targetOrderPosition !in order.indices) return
         orderPosition = targetOrderPosition
-        scope.launch { playCurrent() }
+        launchPlayCurrent()
     }
 
     fun next() {
@@ -225,7 +245,13 @@ class PlayerController(
         }
 
         orderPosition = next
-        scope.launch { playCurrent() }
+        launchPlayCurrent()
+    }
+
+    /** cancel job ของ playCurrent() ตัวก่อนหน้าเสมอก่อนเริ่มตัวใหม่ — ดูคอมเมนต์ที่ field playJob ด้านบน */
+    private fun launchPlayCurrent(resumeAtMs: Long = 0L) {
+        playJob?.cancel()
+        playJob = scope.launch { playCurrent(resumeAtMs) }
     }
 
     fun toggleShuffle() {
@@ -293,7 +319,7 @@ class PlayerController(
                 play()
             }
 
-            _state.value = _state.value.copy(isResolving = false)
+            _state.value = _state.value.copy(isResolving = false, currentTrackId = track.id)
         } catch (e: Exception) {
             val modeLabel = if (playbackMode == PlaybackMode.VIDEO) "วิดีโอ" else "เสียง"
             _state.value = _state.value.copy(
@@ -309,7 +335,7 @@ class PlayerController(
         playbackMode = mode
         _state.value = _state.value.copy(playbackMode = mode)
         val resumeAtMs = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
-        scope.launch { playCurrent(resumeAtMs = resumeAtMs) }
+        launchPlayCurrent(resumeAtMs)
     }
 
     /** ปรับความเร็วเล่นเพลง (1.0 = ปกติ) — มีผลทันทีกับเพลงที่กำลังเล่นอยู่ */
@@ -353,6 +379,35 @@ class PlayerController(
         publishUpcoming()
     }
 
+    /**
+     * ตั้งเวลาปิดเพลงอัตโนมัติ (sleep timer) — ยกเลิกตัวเก่าทิ้งเสมอก่อนเริ่มนับใหม่ (ตั้งซ้ำ = รีเซ็ตเวลา)
+     * นับถอยหลังจริงด้วย wall-clock timestamp (ไม่ใช่แค่หัก duration ทุก tick) กันเวลาคลาดเคลื่อนสะสม
+     * ถ้า coroutine โดน delay ช้ากว่าที่ตั้งไว้บ้าง (เช่นระบบไปหน่วง background work)
+     */
+    fun setSleepTimer(durationMs: Long) {
+        sleepTimerJob?.cancel()
+        val endAtMillis = System.currentTimeMillis() + durationMs
+        sleepTimerJob = scope.launch {
+            while (isActive) {
+                val remaining = endAtMillis - System.currentTimeMillis()
+                if (remaining <= 0L) {
+                    controller?.pause()
+                    _state.value = _state.value.copy(sleepTimerRemainingMs = null)
+                    break
+                }
+                _state.value = _state.value.copy(sleepTimerRemainingMs = remaining)
+                delay(AppConstants.SLEEP_TIMER_TICK_MILLIS)
+            }
+        }
+    }
+
+    /** ยกเลิก sleep timer ที่ตั้งไว้ (ปุ่ม "ปิด" ในเมนูตั้งเวลา) */
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        _state.value = _state.value.copy(sleepTimerRemainingMs = null)
+    }
+
     /** เปิดให้ UI ผูก Player เข้ากับ PlayerView ตอนโหมดวิดีโอ (MediaController implement Player อยู่แล้ว) */
     fun rawPlayer(): Player? = controller
 
@@ -377,6 +432,8 @@ class PlayerController(
 
     /** หยุดเล่นเพลง ล้างคิวทั้งหมด และซ่อน mini player bar (กดปุ่มปิดที่ mini player) */
     fun stopAndDismiss() {
+        playJob?.cancel()
+        sleepTimerJob?.cancel()
         controller?.apply {
             pause()
             stop()
@@ -411,6 +468,11 @@ class PlayerController(
     }
 
     fun release() {
+        if (PlaybackBridge.listener != null) {
+            PlaybackBridge.listener = null
+        }
+        playJob?.cancel()
+        sleepTimerJob?.cancel()
         controller?.release()
         controller = null
     }

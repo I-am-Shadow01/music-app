@@ -19,6 +19,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -46,6 +48,7 @@ fun SearchScreen(
     onAddToQueue: (Track) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val favoriteIds by viewModel.favoriteIds.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
     // ใกล้เลื่อนถึงท้ายลิสต์แล้ว (เหลืออีกไม่กี่รายการ) → โหลดหน้าถัดไปล่วงหน้าให้เลย (infinite scroll)
@@ -130,9 +133,11 @@ fun SearchScreen(
                     itemsIndexed(uiState.results, key = { _, track -> track.id }) { index, track ->
                         TrackRow(
                             track = track,
+                            isFavorite = track.id in favoriteIds,
                             onClick = { onTrackSelected(uiState.results, index) },
                             onPlayNext = { onPlayNext(track) },
-                            onAddToQueue = { onAddToQueue(track) }
+                            onAddToQueue = { onAddToQueue(track) },
+                            onToggleFavorite = { viewModel.toggleFavorite(track) }
                         )
                     }
 
@@ -247,9 +252,11 @@ private fun RecentSearchesList(
 @Composable
 private fun TrackRow(
     track: Track,
+    isFavorite: Boolean,
     onClick: () -> Unit,
     onPlayNext: () -> Unit,
-    onAddToQueue: () -> Unit
+    onAddToQueue: () -> Unit,
+    onToggleFavorite: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
 
@@ -281,6 +288,15 @@ private fun TrackRow(
                 Text(
                     formatDurationSeconds(seconds),
                     style = MaterialTheme.typography.labelSmall
+                )
+            }
+            IconButton(onClick = onToggleFavorite) {
+                Icon(
+                    imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = stringResource(
+                        if (isFavorite) R.string.search_favorite_remove else R.string.search_favorite_add
+                    ),
+                    tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
                 )
             }
         }

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
@@ -42,6 +43,8 @@ import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.R
 import com.cid.musicapp.di.AppContainer
 import com.cid.musicapp.player.PlaybackUiState
+import com.cid.musicapp.ui.favorites.FavoritesScreen
+import com.cid.musicapp.ui.favorites.FavoritesViewModel
 import com.cid.musicapp.ui.player.PlayerScreen
 import com.cid.musicapp.ui.player.PlayerViewModel
 import com.cid.musicapp.ui.search.SearchScreen
@@ -52,6 +55,7 @@ import com.cid.musicapp.ui.update.UpdateBanner
 import com.cid.musicapp.ui.update.UpdateViewModel
 
 private const val ROUTE_SEARCH = "search"
+private const val ROUTE_FAVORITES = "favorites"
 private const val ROUTE_PLAYER = "player"
 private const val ROUTE_SETTINGS = "settings"
 
@@ -77,6 +81,7 @@ fun AppNavHost(container: AppContainer) {
 
     val tabs = listOf(
         BottomTab(ROUTE_SEARCH, R.string.nav_search, Icons.Default.Search),
+        BottomTab(ROUTE_FAVORITES, R.string.nav_favorites, Icons.Default.Favorite),
         BottomTab(ROUTE_SETTINGS, R.string.nav_settings, Icons.Default.Settings)
     )
 
@@ -175,10 +180,25 @@ fun AppNavHost(container: AppContainer) {
                     )
                 }
 
+                composable(ROUTE_FAVORITES) {
+                    val viewModel: FavoritesViewModel = viewModel(
+                        factory = viewModelFactory {
+                            initializer { FavoritesViewModel(container.appSettings) }
+                        }
+                    )
+                    FavoritesScreen(
+                        viewModel = viewModel,
+                        onTrackSelected = { tracks, index ->
+                            container.playerController.playQueue(tracks, index)
+                            openPlayer()
+                        }
+                    )
+                }
+
                 composable(ROUTE_PLAYER) {
                     val viewModel: PlayerViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { PlayerViewModel(container.playerController) }
+                            initializer { PlayerViewModel(container.playerController, container.appSettings) }
                         }
                     )
                     PlayerScreen(

@@ -69,4 +69,12 @@ object AppConstants {
     const val WAVEFORM_CAPTURE_SIZE = 256
     const val WAVEFORM_BAR_COUNT = 32
     const val WAVEFORM_CAPTURE_RATE_HZ = 15
+
+    // --- ตั้งเวลาปิดเพลงอัตโนมัติ (sleep timer) ---
+    const val SLEEP_TIMER_TICK_MILLIS = 1000L
+    val SLEEP_TIMER_PRESET_MINUTES = listOf(15, 30, 45, 60)
+
+    // --- เพลงโปรด (favorites) ---
+    // เก็บได้สูงสุดกี่เพลง กันไฟล์ preferences บวมถ้าผู้ใช้กดใจเยอะมากๆ ตลอดหลายปี
+    const val MAX_FAVORITE_TRACKS = 500
 }

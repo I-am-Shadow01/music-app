@@ -11,6 +11,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
@@ -22,6 +24,8 @@ import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.TimerOff
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -56,6 +60,7 @@ import kotlin.math.abs
 @Composable
 fun PlayerScreen(viewModel: PlayerViewModel, onCollapse: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val favoriteIds by viewModel.favoriteIds.collectAsStateWithLifecycle()
     val haptic = LocalHapticFeedback.current
 
     if (state.currentTitle == null) {
@@ -94,6 +99,11 @@ fun PlayerScreen(viewModel: PlayerViewModel, onCollapse: () -> Unit) {
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f),
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            SleepTimerButton(
+                remainingMs = state.sleepTimerRemainingMs,
+                onSetTimer = { minutes -> viewModel.setSleepTimer(minutes * 60_000L) },
+                onCancelTimer = { viewModel.cancelSleepTimer() }
             )
             IconButton(onClick = {
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -171,12 +181,28 @@ fun PlayerScreen(viewModel: PlayerViewModel, onCollapse: () -> Unit) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text(
-                state.currentTitle ?: "",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    state.currentTitle ?: "",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                val isFavorite = state.currentTrackId != null && state.currentTrackId in favoriteIds
+                IconButton(onClick = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.toggleFavoriteCurrent()
+                }) {
+                    Icon(
+                        imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                        contentDescription = stringResource(
+                            if (isFavorite) R.string.player_favorite_remove else R.string.player_favorite_add
+                        ),
+                        tint = if (isFavorite) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                    )
+                }
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 state.currentArtist ?: "",
@@ -349,6 +375,62 @@ fun PlayerScreen(viewModel: PlayerViewModel, onCollapse: () -> Unit) {
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+/** ปุ่มตั้งเวลาปิดเพลงอัตโนมัติ (sleep timer) — กดเปิดเมนูเลือกเวลา, ทึบขึ้นมาเป็นสีธีมเมื่อกำลังนับถอยหลังอยู่ */
+@Composable
+private fun SleepTimerButton(
+    remainingMs: Long?,
+    onSetTimer: (minutes: Int) -> Unit,
+    onCancelTimer: () -> Unit
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val haptic = LocalHapticFeedback.current
+    val isActive = remainingMs != null
+
+    Box {
+        IconButton(onClick = {
+            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            menuExpanded = true
+        }) {
+            Icon(
+                imageVector = if (isActive) Icons.Default.Timer else Icons.Default.TimerOff,
+                contentDescription = stringResource(R.string.player_sleep_timer),
+                tint = if (isActive) MaterialTheme.colorScheme.primary else LocalContentColor.current
+            )
+        }
+
+        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            if (isActive) {
+                remainingMs?.let {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.player_sleep_timer_remaining, formatDurationMillis(it))) },
+                        onClick = {},
+                        enabled = false
+                    )
+                    HorizontalDivider()
+                }
+            }
+            AppConstants.SLEEP_TIMER_PRESET_MINUTES.forEach { minutes ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.player_sleep_timer_minutes, minutes)) },
+                    onClick = {
+                        menuExpanded = false
+                        onSetTimer(minutes)
+                    }
+                )
+            }
+            if (isActive) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.player_sleep_timer_off)) },
+                    onClick = {
+                        menuExpanded = false
+                        onCancelTimer()
+                    }
+                )
             }
         }
     }

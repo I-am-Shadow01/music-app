@@ -8,9 +8,11 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.cid.musicapp.data.repository.Track
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "app_settings")
 
@@ -34,6 +36,7 @@ class AppSettings(context: Context) {
         private val KEY_RECENT_SEARCHES = stringPreferencesKey("recent_searches_json")
         private val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color_enabled")
         private val KEY_VIDEO_HEIGHT_PX = intPreferencesKey("video_height_px")
+        private val KEY_FAVORITE_TRACKS = stringPreferencesKey("favorite_tracks_json")
     }
 
     val themeModeFlow: Flow<ThemeMode> = dataStore.data.map { prefs ->
@@ -79,6 +82,64 @@ class AppSettings(context: Context) {
     /** คุณภาพวิดีโอเป้าหมายตอนเล่นโหมดวิดีโอ เก็บเป็นความสูง px ตรงๆ (เช่น 480 = 480p) */
     val videoHeightPxFlow: Flow<Int> = dataStore.data.map { prefs ->
         prefs[KEY_VIDEO_HEIGHT_PX] ?: AppConstants.DEFAULT_VIDEO_HEIGHT_PX
+    }
+
+    /** เพลงโปรด (กดใจ) เรียงใหม่สุดอยู่บนสุด — เก็บเป็น JSON array ของ track object เต็มๆ (id/title/artist/...)
+     * เพราะเวลาแสดงในแท็บ "เพลงโปรด" ต้องมีข้อมูลครบ ไม่ใช่แค่ id เฉยๆ (ต่างจาก recentSearches ที่เก็บแค่ string) */
+    val favoriteTracksFlow: Flow<List<Track>> = dataStore.data.map { prefs ->
+        decodeFavoriteTracks(prefs[KEY_FAVORITE_TRACKS])
+    }
+
+    private fun decodeFavoriteTracks(raw: String?): List<Track> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { index ->
+                val obj = array.getJSONObject(index)
+                Track(
+                    id = obj.getString("id"),
+                    title = obj.getString("title"),
+                    artist = obj.getString("artist"),
+                    durationSeconds = obj.optInt("durationSeconds", -1).takeIf { it >= 0 },
+                    thumbnailUrl = obj.optString("thumbnailUrl", "").takeIf { it.isNotBlank() }
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun encodeFavoriteTracks(tracks: List<Track>): String {
+        val array = JSONArray()
+        tracks.forEach { track ->
+            val obj = JSONObject()
+            obj.put("id", track.id)
+            obj.put("title", track.title)
+            obj.put("artist", track.artist)
+            track.durationSeconds?.let { obj.put("durationSeconds", it) }
+            track.thumbnailUrl?.let { obj.put("thumbnailUrl", it) }
+            array.put(obj)
+        }
+        return array.toString()
+    }
+
+    /** สลับสถานะกดใจของ track — มีอยู่แล้วให้เอาออก, ยังไม่มีให้เพิ่มไว้บนสุด */
+    suspend fun toggleFavorite(track: Track) {
+        dataStore.edit { prefs ->
+            val current = decodeFavoriteTracks(prefs[KEY_FAVORITE_TRACKS])
+            val alreadyFavorite = current.any { it.id == track.id }
+            val updated = if (alreadyFavorite) {
+                current.filterNot { it.id == track.id }
+            } else {
+                (listOf(track) + current).take(AppConstants.MAX_FAVORITE_TRACKS)
+            }
+            prefs[KEY_FAVORITE_TRACKS] = encodeFavoriteTracks(updated)
+        }
+    }
+
+    suspend fun removeFavorite(trackId: String) {
+        dataStore.edit { prefs ->
+            val current = decodeFavoriteTracks(prefs[KEY_FAVORITE_TRACKS])
+            prefs[KEY_FAVORITE_TRACKS] = encodeFavoriteTracks(current.filterNot { it.id == trackId })
+        }
     }
 
     private fun decodeRecentSearches(raw: String?): List<String> {

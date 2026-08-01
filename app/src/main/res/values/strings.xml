@@ -15,6 +15,8 @@
     <string name="search_added_to_queue">เพิ่มเข้าคิวแล้ว</string>
     <string name="search_plays_next">จะเล่นต่อจากเพลงนี้</string>
     <string name="search_no_results">ไม่พบผลลัพธ์สำหรับคำนี้</string>
+    <string name="search_favorite_add">กดใจเพลงนี้</string>
+    <string name="search_favorite_remove">เอาออกจากเพลงโปรด</string>
 
     <string name="player_no_track">ยังไม่มีเพลงที่กำลังเล่น</string>
     <string name="player_play">เล่น</string>
@@ -34,8 +36,17 @@
     <string name="player_remove_from_queue">ลบออกจากคิว</string>
     <string name="player_reorder_handle">ลากเพื่อสลับลำดับ</string>
     <string name="player_removed_from_queue">ลบเพลงออกจากคิวแล้ว</string>
+    <string name="player_favorite_add">กดใจเพลงนี้</string>
+    <string name="player_favorite_remove">เอาออกจากเพลงโปรด</string>
+    <string name="player_sleep_timer">ตั้งเวลาปิดเพลง</string>
+    <string name="player_sleep_timer_minutes">%1$d นาที</string>
+    <string name="player_sleep_timer_off">ปิดตัวตั้งเวลา</string>
+    <string name="player_sleep_timer_remaining">เหลืออีก %1$s</string>
 
     <string name="mini_player_dismiss">หยุดเล่นและปิดแถบเพลง</string>
+
+    <string name="favorites_empty_state">ยังไม่มีเพลงโปรด — กดรูปหัวใจที่เพลงที่ชอบเพื่อเก็บไว้ที่นี่</string>
+    <string name="favorites_remove">เอาออกจากเพลงโปรด</string>
 
     <string name="settings_dynamic_color_title">ใช้สีจากวอลเปเปอร์ (Material You)</string>
     <string name="settings_dynamic_color_unsupported">รองรับเฉพาะ Android 12 ขึ้นไป</string>
@@ -44,6 +55,7 @@
     <string name="settings_video_quality_hint">ใช้เมื่อเล่นในโหมดวิดีโอเท่านั้น — ค่าที่ตั้งสูงกว่าที่มีจริงจะได้คุณภาพสูงสุดที่มีให้อัตโนมัติ</string>
 
     <string name="nav_search">ค้นหา</string>
+    <string name="nav_favorites">เพลงโปรด</string>
     <string name="nav_player">กำลังเล่น</string>
     <string name="nav_settings">ตั้งค่า</string>
 
