@@ -6,6 +6,8 @@ import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.config.ThemeMode
 import com.cid.musicapp.data.repository.MusicRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -30,6 +32,11 @@ class SettingsViewModel(
 
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState
+
+    // job ของข้อความ "เสร็จแล้ว" ชั่วคราว (ล้างแคชแล้ว / รีเซ็ตแล้ว) — cancel ตัวเก่าทิ้งก่อนเริ่มนับใหม่
+    // กันข้อความค้างอยู่ตลอดไปถ้าไม่มีอะไรมาเปลี่ยน uiState อีก (เช่น กดล้างแคชแล้วไม่แตะอะไรต่อ)
+    private var cacheClearedMessageJob: Job? = null
+    private var settingsResetMessageJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -109,6 +116,12 @@ class SettingsViewModel(
     fun clearCache() {
         musicRepository.clearStreamCache()
         _uiState.value = _uiState.value.copy(cacheClearedJustNow = true)
+
+        cacheClearedMessageJob?.cancel()
+        cacheClearedMessageJob = viewModelScope.launch {
+            delay(AppConstants.SETTINGS_CONFIRMATION_MESSAGE_MILLIS)
+            _uiState.value = _uiState.value.copy(cacheClearedJustNow = false)
+        }
     }
 
     fun cachedStreamCount(): Int = musicRepository.cachedStreamCount()
@@ -117,6 +130,12 @@ class SettingsViewModel(
         viewModelScope.launch {
             appSettings.resetAll()
             _uiState.value = _uiState.value.copy(settingsResetJustNow = true)
+
+            settingsResetMessageJob?.cancel()
+            settingsResetMessageJob = viewModelScope.launch {
+                delay(AppConstants.SETTINGS_CONFIRMATION_MESSAGE_MILLIS)
+                _uiState.value = _uiState.value.copy(settingsResetJustNow = false)
+            }
         }
     }
 }

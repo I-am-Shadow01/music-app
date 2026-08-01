@@ -2,10 +2,13 @@ package com.cid.musicapp.ui.update
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.update.ApkInstaller
 import com.cid.musicapp.update.AppUpdateChecker
 import com.cid.musicapp.update.UpdateInfo
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -30,6 +33,10 @@ class UpdateViewModel(
     private val _uiState = MutableStateFlow(UpdateUiState())
     val uiState: StateFlow<UpdateUiState> = _uiState
 
+    // job ของข้อความ "อัปเดตล่าสุดแล้ว" ชั่วคราว — cancel ตัวเก่าทิ้งก่อนเริ่มนับใหม่ กันข้อความค้าง
+    // อยู่ตลอดไปถ้าไม่มีการเช็คอัปเดตครั้งใหม่มาล้างมันก่อน
+    private var upToDateMessageJob: Job? = null
+
     init {
         viewModelScope.launch {
             if (appSettings.autoCheckUpdatesFlow.first()) {
@@ -44,6 +51,7 @@ class UpdateViewModel(
     }
 
     private suspend fun runCheck(showUpToDateFeedback: Boolean) {
+        upToDateMessageJob?.cancel()
         _uiState.value = _uiState.value.copy(isChecking = true, justConfirmedUpToDate = false)
         val update = checker.checkForUpdate(currentBuildNumber)
         _uiState.value = _uiState.value.copy(
@@ -51,6 +59,13 @@ class UpdateViewModel(
             availableUpdate = update,
             justConfirmedUpToDate = showUpToDateFeedback && update == null
         )
+
+        if (showUpToDateFeedback && update == null) {
+            upToDateMessageJob = viewModelScope.launch {
+                delay(AppConstants.SETTINGS_CONFIRMATION_MESSAGE_MILLIS)
+                _uiState.value = _uiState.value.copy(justConfirmedUpToDate = false)
+            }
+        }
     }
 
     /** ผู้ใช้กด "อัปเดต" — เช็คสิทธิ์ก่อน ถ้ามีแล้วค่อยโหลด+ติดตั้ง */

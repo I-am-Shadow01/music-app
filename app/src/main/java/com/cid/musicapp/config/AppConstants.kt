@@ -77,4 +77,7 @@ object AppConstants {
     // --- เพลงโปรด (favorites) ---
     // เก็บได้สูงสุดกี่เพลง กันไฟล์ preferences บวมถ้าผู้ใช้กดใจเยอะมากๆ ตลอดหลายปี
     const val MAX_FAVORITE_TRACKS = 500
+
+    // ข้อความยืนยันชั่วคราวในหน้าตั้งค่า (เช่น "ล้างแคชแล้ว") แสดงนานแค่นี้ก่อนหายไปเอง
+    const val SETTINGS_CONFIRMATION_MESSAGE_MILLIS = 3000L
 }

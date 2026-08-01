@@ -1,0 +1,7 @@
+<resources>
+    <!-- เนื้อหาทั้งแอปวาดด้วย Compose ล้วนๆ (ไม่มี XML layout) ธีมนี้มีผลแค่ตอน cold start ก่อน
+    Compose จะ render เฟรมแรก (window background พื้นหลัง) กับสีของ system bar เริ่มต้นเท่านั้น
+    ถ้าไม่มีไฟล์นี้ เครื่องที่เปิด system dark mode อยู่จะเจอพื้นหลังกะพริบสีขาว (flash) ก่อนเข้าแอปเสมอ
+    เพราะ values/themes.xml (ค่า default) ตั้งเป็นธีมสว่างตายตัว ไม่ได้ตามระบบ -->
+    <style name="Theme.MusicApp" parent="android:Theme.Material.NoActionBar" />
+</resources>

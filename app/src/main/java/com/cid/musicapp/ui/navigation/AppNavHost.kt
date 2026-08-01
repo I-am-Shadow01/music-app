@@ -88,6 +88,11 @@ fun AppNavHost(container: AppContainer) {
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
+    // route ปัจจุบัน ใช้ตัดสินใจว่าควรซ่อน mini player bar + แถบแท็บด้านล่างไหม
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = backStackEntry?.destination
+    val currentRoute = currentDestination?.route
+
     // สลับไปแท็บหลักด้านล่าง (ค้นหา/ตั้งค่า) เท่านั้น — ใช้ popUpTo+restoreState กันกดสลับแท็บไปมาแล้ว
     // back stack พอกจนกด back ไม่ออก (คงตำแหน่งที่เลื่อนไว้ของแต่ละแท็บไว้ให้ด้วย)
     fun navigateToTab(route: String) {
@@ -117,30 +122,31 @@ fun AppNavHost(container: AppContainer) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            Column {
-                if (playbackState.currentTitle != null) {
-                    MiniPlayerBar(
-                        state = playbackState,
-                        onTogglePlayPause = { container.playerController.togglePlayPause() },
-                        onNext = { container.playerController.next() },
-                        onPrevious = { container.playerController.previous() },
-                        onDismiss = { container.playerController.stopAndDismiss() },
-                        onClick = { openPlayer() }
-                    )
-                }
-
-                NavigationBar {
-                    val backStackEntry by navController.currentBackStackEntryAsState()
-                    val currentDestination = backStackEntry?.destination
-
-                    tabs.forEach { tab ->
-                        val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
-                        NavigationBarItem(
-                            selected = selected,
-                            onClick = { navigateToTab(tab.route) },
-                            icon = { Icon(tab.icon, contentDescription = null) },
-                            label = { Text(stringResource(tab.labelRes)) }
+            // ซ่อน mini player bar + แถบแท็บตอนอยู่ในหน้า "กำลังเล่น" เต็มจอ กันโชว์ปุ่มเล่น/หยุดซ้ำซ้อน
+            // สองชุดพร้อมกัน (อันหนึ่งในหน้าเต็มจอ อีกอันในแถบเล็กด้านล่าง) และเปิดพื้นที่จอให้เต็มที่
+            if (currentRoute != ROUTE_PLAYER) {
+                Column {
+                    if (playbackState.currentTitle != null) {
+                        MiniPlayerBar(
+                            state = playbackState,
+                            onTogglePlayPause = { container.playerController.togglePlayPause() },
+                            onNext = { container.playerController.next() },
+                            onPrevious = { container.playerController.previous() },
+                            onDismiss = { container.playerController.stopAndDismiss() },
+                            onClick = { openPlayer() }
                         )
+                    }
+
+                    NavigationBar {
+                        tabs.forEach { tab ->
+                            val selected = currentDestination?.hierarchy?.any { it.route == tab.route } == true
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = { navigateToTab(tab.route) },
+                                icon = { Icon(tab.icon, contentDescription = null) },
+                                label = { Text(stringResource(tab.labelRes)) }
+                            )
+                        }
                     }
                 }
             }

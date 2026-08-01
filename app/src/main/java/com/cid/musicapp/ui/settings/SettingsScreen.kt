@@ -270,6 +270,17 @@ fun SettingsScreen(
                 onCheckedChange = { viewModel.setDevModeEnabled(it) }
             )
 
+            // ข้อความ "รีเซ็ตเรียบร้อยแล้ว" ต้องอยู่นอก DeveloperPanel เสมอ — เพราะ resetAllSettings()
+            // ล้างค่าตั้งค่าทุกตัวรวมถึง devModeEnabled ไปด้วย ถ้าซ้อนข้อความนี้ไว้ข้างในแผงที่โชว์เฉพาะ
+            // ตอนเปิดโหมดนักพัฒนา แผงทั้งอันจะยุบหายไปทันทีหลังกดรีเซ็ต พร้อมข้อความยืนยันที่ควรให้เห็น
+            if (uiState.settingsResetJustNow) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    stringResource(R.string.settings_dev_reset_done),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+
             if (uiState.devModeEnabled) {
                 Spacer(modifier = Modifier.height(12.dp))
                 DeveloperPanel(
@@ -327,13 +338,6 @@ private fun DeveloperPanel(
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedButton(onClick = onRequestReset) {
                 Text(stringResource(R.string.settings_dev_reset_button))
-            }
-            if (uiState.settingsResetJustNow) {
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    stringResource(R.string.settings_dev_reset_done),
-                    style = MaterialTheme.typography.labelSmall
-                )
             }
         }
 

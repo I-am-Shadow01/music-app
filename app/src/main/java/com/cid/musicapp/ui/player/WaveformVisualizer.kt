@@ -1,7 +1,10 @@
 package com.cid.musicapp.ui.player
 
+import android.Manifest
 import android.content.pm.PackageManager
 import android.media.audiofx.Visualizer
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -20,7 +23,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import android.Manifest
 import com.cid.musicapp.config.AppConstants
 import kotlin.math.abs
 import kotlin.math.max
@@ -30,7 +32,8 @@ import kotlin.math.min
  * คลื่นเสียงแบบ dynamic ที่ขยับตามเสียงที่กำลังเล่นจริง (ไม่ใช่ animation หลอกๆ)
  * ใช้ android.media.audiofx.Visualizer ผูกกับ audioSessionId ของ ExoPlayer ปัจจุบัน
  *
- * ต้องมีสิทธิ์ RECORD_AUDIO (ดู AndroidManifest + MainActivity) — ถ้าผู้ใช้ไม่ให้สิทธิ์
+ * ต้องมีสิทธิ์ RECORD_AUDIO — ขอแบบมีบริบทตรงนี้เอง (ครั้งแรกที่เห็นคลื่นเสียง ไม่ใช่ตอนเปิดแอป)
+ * และขอแค่ครั้งเดียวต่อการเปิดแอปหนึ่งรอบ ไม่ถามซ้ำทุกครั้งที่กลับมาหน้านี้ ถ้าผู้ใช้ไม่ให้สิทธิ์
  * หรืออุปกรณ์ไม่รองรับ จะไม่วาดอะไรเลยแทนที่จะ crash (เพลงยังเล่นได้ปกติ)
  */
 @Composable
@@ -44,9 +47,24 @@ fun WaveformVisualizer(
 
     var amplitudes by remember { mutableStateOf(FloatArray(AppConstants.WAVEFORM_BAR_COUNT)) }
 
-    val hasPermission = ContextCompat.checkSelfPermission(
-        context, Manifest.permission.RECORD_AUDIO
-    ) == PackageManager.PERMISSION_GRANTED
+    var hasPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted -> hasPermission = granted }
+
+    LaunchedEffect(Unit) {
+        if (!hasPermission && !WaveformPermissionState.hasRequestedThisSession) {
+            WaveformPermissionState.hasRequestedThisSession = true
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     // สร้าง Visualizer ใหม่ทุกครั้งที่ audioSessionId เปลี่ยน (เช่น สลับเพลง) — session id เดิมใช้ต่อไม่ได้
     DisposableEffect(audioSessionId, hasPermission) {
@@ -129,6 +147,13 @@ fun WaveformVisualizer(
             )
         }
     }
+}
+
+/** จำว่าเคยขอสิทธิ์ RECORD_AUDIO ไปแล้วในรอบเปิดแอปนี้ — กันถามซ้ำทุกครั้งที่เข้า/ออกหน้ากำลังเล่น
+ * (ไม่ persist ข้ามการเปิดแอปใหม่ ตั้งใจ — ถ้าผู้ใช้ปิดแอปแล้วเปิดใหม่ ระบบเองก็จัดการเรื่อง
+ * "อย่าถามอีก" ให้แล้วถ้าผู้ใช้เคยกดปฏิเสธแบบถาวรไปก่อนหน้า) */
+private object WaveformPermissionState {
+    var hasRequestedThisSession = false
 }
 
 /** ย่อ waveform (unsigned 8-bit, กึ่งกลางที่ 128) ให้เหลือ [barCount] แท่ง โดยเฉลี่ยแอมพลิจูดสัมบูรณ์ในแต่ละช่วง */

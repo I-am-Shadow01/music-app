@@ -8,9 +8,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.ThemeMode
@@ -22,16 +25,14 @@ class MainActivity : ComponentActivity() {
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
 
-    // RECORD_AUDIO จำเป็นสำหรับ android.media.audiofx.Visualizer (waveform ในหน้ากำลังเล่น) เท่านั้น
-    // ไม่ได้ใช้บันทึกเสียงจริงๆ — ถ้าผู้ใช้ไม่อนุญาต แอปยังเล่นเพลงได้ปกติ แค่ไม่แสดงคลื่นเสียง
-    private val recordAudioPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         requestNotificationPermissionIfNeeded()
-        requestRecordAudioPermissionIfNeeded()
+        // หมายเหตุ: RECORD_AUDIO (สำหรับ waveform) ไม่ได้ขอตรงนี้แล้วโดยตั้งใจ — แอปเพลงที่เพิ่งเปิดมา
+        // ยังไม่ทันได้ทำอะไรแล้วเจอ popup ขอสิทธิ์ไมโครโฟนทันทีดูน่าสงสัย/เสียความเชื่อใจผู้ใช้
+        // (ทั้งที่ไม่ได้อัดเสียงจริง) จึงย้ายไปขอแบบมีบริบทตอนเข้าหน้ากำลังเล่นครั้งแรกแทน
+        // (ดู WaveformVisualizer.kt) และขอแค่ครั้งเดียวต่อการเปิดแอปหนึ่งรอบ
 
         val container = (application as MusicApp).container
 
@@ -49,6 +50,18 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 ThemeMode.LIGHT -> false
                 ThemeMode.DARK -> true
+            }
+
+            // สีไอคอนแถบสถานะ/แถบนำทางต้องตามธีมที่ "คำนวณแล้วจริงๆ" (darkTheme ด้านบน) ไม่ใช่แค่
+            // ตามระบบเฉยๆ เพราะผู้ใช้เลือก Light/Dark เองในแอปได้โดยไม่ขึ้นกับโหมดของระบบ — ถ้าไม่ sync
+            // ตรงนี้ เช่น เลือกธีมมืดในแอปทั้งที่ระบบเป็นโหมดสว่าง ไอคอนแถบสถานะจะกลายเป็นสีเข้มมองไม่เห็น
+            // บนพื้นหลังเข้มของแอป
+            val view = LocalView.current
+            SideEffect {
+                val window = (view.context as ComponentActivity).window
+                val insetsController = WindowCompat.getInsetsController(window, view)
+                insetsController.isAppearanceLightStatusBars = !darkTheme
+                insetsController.isAppearanceLightNavigationBars = !darkTheme
             }
 
             MusicAppTheme(
@@ -70,16 +83,6 @@ class MainActivity : ComponentActivity() {
             if (!granted) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
-        }
-    }
-
-    private fun requestRecordAudioPermissionIfNeeded() {
-        val granted = ContextCompat.checkSelfPermission(
-            this, Manifest.permission.RECORD_AUDIO
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!granted) {
-            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 }
