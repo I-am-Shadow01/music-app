@@ -12,6 +12,7 @@ import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.MusicRepository
 import com.cid.musicapp.data.repository.Track
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -320,6 +321,12 @@ class PlayerController(
             }
 
             _state.value = _state.value.copy(isResolving = false, currentTrackId = track.id)
+        } catch (e: CancellationException) {
+            // job นี้โดน cancel เพราะมีคำสั่งเล่นใหม่กว่าเข้ามาแทน (ดู launchPlayCurrent) — ไม่ใช่ error
+            // จริง ต้อง rethrow ต่อเสมอ ไม่งั้น catch(Exception) ด้านล่างจะจับ CancellationException
+            // (ซึ่งเป็น subclass ของ Exception) ไปด้วย แล้วโชว์ข้อความ "เล่นไม่ได้" หลอกๆ ให้ผู้ใช้เห็น
+            // ทั้งที่จริงๆ แค่ผู้ใช้กด next/previous เร็วเกินไปเฉยๆ
+            throw e
         } catch (e: Exception) {
             val modeLabel = if (playbackMode == PlaybackMode.VIDEO) "วิดีโอ" else "เสียง"
             _state.value = _state.value.copy(

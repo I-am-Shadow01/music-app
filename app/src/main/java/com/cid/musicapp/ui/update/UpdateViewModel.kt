@@ -7,6 +7,7 @@ import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.update.ApkInstaller
 import com.cid.musicapp.update.AppUpdateChecker
 import com.cid.musicapp.update.UpdateInfo
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,6 +105,8 @@ class UpdateViewModel(
                 val file = installer.download(update.downloadUrl)
                 installer.install(file)
                 _uiState.value = _uiState.value.copy(isDownloading = false)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isDownloading = false,

@@ -1,6 +1,7 @@
 package com.cid.musicapp.update
 
 import com.cid.musicapp.config.AppConstants
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -49,6 +50,8 @@ class AppUpdateChecker {
                     releaseUrl = json.optString("html_url")
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             null
         }

@@ -6,6 +6,7 @@ import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.MusicRepository
 import com.cid.musicapp.data.repository.Track
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -113,6 +114,11 @@ class SearchViewModel(
                     )
                 }
                 appSettings.addRecentSearch(query)
+            } catch (e: CancellationException) {
+                // job นี้โดน searchJob?.cancel() เพราะมีการค้นหาใหม่กว่าเข้ามาแทน (พิมพ์เร็ว/กดค้นหาซ้ำ)
+                // ไม่ใช่ error จริง ต้อง rethrow เสมอ ไม่งั้นจะโชว์ข้อความ error กระพริบหลอกๆ ทับผลค้นหา
+                // ใหม่ที่กำลังจะมา (ดูเหตุผลเดียวกันใน PlayerController.playCurrent())
+                throw e
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
@@ -141,6 +147,9 @@ class SearchViewModel(
                         isLoadingMore = false
                     )
                 }
+            } catch (e: CancellationException) {
+                // เหตุผลเดียวกับใน runSearch() ด้านบน — ไม่ใช่ error จริง ต้อง rethrow เสมอ
+                throw e
             } catch (e: Exception) {
                 // โหลดเพิ่มพลาด — ไม่ล้างผลลัพธ์เดิมที่มีอยู่แล้ว แค่หยุด loading และปิด canLoadMore
                 // กันผู้ใช้เห็นลิสต์กระตุกหาย ผู้ใช้ยังเลื่อนดูของเดิมได้ตามปกติ
