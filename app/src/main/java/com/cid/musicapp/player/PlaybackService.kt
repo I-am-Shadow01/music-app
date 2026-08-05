@@ -51,52 +51,21 @@ class PlaybackService : MediaSessionService() {
         // จึงต้องดักคำสั่งพวกนี้แล้วส่งต่อไปให้ PlayerController จัดการคิว/shuffle/repeat จริงแทน
         // ผ่าน PlaybackBridge (ดูคอมเมนต์อธิบายเต็มๆ ในไฟล์นั้น)
         //
-        // สำคัญ: การ override getAvailableCommands() อย่างเดียวไม่พอ — MediaSession ไม่ได้ถาม
-        // getAvailableCommands() ใหม่ทุกครั้ง แต่อาศัย event onAvailableCommandsChanged/onEvents ที่
-        // ExoPlayer ตัวจริงยิงออกมาเอง ซึ่ง ForwardingPlayer.addListener() ค่าเริ่มต้นจะเอา listener
-        // ไปลงทะเบียนตรงกับ ExoPlayer ตัวจริง (ข้าม override ของเราไปเลย) ทำให้ MediaSession เห็นค่า
-        // "จำกัดสิทธิ์" ของ ExoPlayer ตัวจริงอยู่ดี ปุ่ม next/previous บนหน้าจอล็อก/แจ้งเตือนจะยังโชว์
-        // เป็นปิดใช้งาน (แม้ override getAvailableCommands() ไว้แล้วก็ตาม) — ต้อง override
-        // addListener()/removeListener() ห่อ callback ที่ยิงกลับมาด้วย ให้ commands ที่ส่งออกไปเป็น
-        // ค่าที่บังคับไว้เสมอทั้งสองทาง (ตอนถาม + ตอน push event)
-        lateinit var forwardingPlayer: Player
-
-        forwardingPlayer = object : ForwardingPlayer(exoPlayer) {
-            // เก็บคู่ (listener ตัวจริงที่ถูกเรียก addListener เข้ามา) -> (ตัวห่อที่เราลงทะเบียนแทน)
-            // ไว้ใช้ตอน removeListener ต้องถอดตัวห่อตัวเดิมออกให้ตรง ไม่งั้น listener จะค้างอยู่ใน
-            // ExoPlayer ตลอดไปแม้ MediaSession จะเลิกสนใจไปแล้ว (listener/memory leak)
-            private val listenerWrappers = java.util.IdentityHashMap<Player.Listener, Player.Listener>()
-
-            private fun forceCommands(base: Player.Commands): Player.Commands {
+        // หมายเหตุ: เคยลองห่อ addListener()/removeListener() เพิ่มเพื่อบังคับ available commands
+        // ผ่าน event onAvailableCommandsChanged ด้วย (ไม่ใช่แค่ getAvailableCommands() getter) แต่
+        // ตัดออกแล้วเพราะซับซ้อนเกินไปจนตรวจสอบความถูกต้องแบบอ่านโค้ดอย่างเดียวไม่ได้จริงๆ — ใช้แพทเทิร์น
+        // getAvailableCommands()+seekTo*() override เพียวๆ แบบนี้แทน ซึ่งเป็นวิธีที่พบได้ทั่วไปในการ
+        // แก้ปัญหานี้ ผลข้างเคียงที่เป็นไปได้ (ถ้ามี): ปุ่ม next/previous บนแจ้งเตือน/หน้าจอล็อกบาง
+        // เครื่อง/บาง Android version อาจโชว์เป็นปิดใช้งานได้บ้างแม้กดแล้วจะทำงานถูกต้อง ถ้าเจอปัญหานี้
+        // ให้แจ้งมา จะกลับไปทำ event-forwarding แบบเต็มอีกที
+        val forwardingPlayer = object : ForwardingPlayer(exoPlayer) {
+            override fun getAvailableCommands(): Player.Commands {
+                val base = super.getAvailableCommands()
                 val builder = base.buildUpon()
                 FORCED_QUEUE_COMMANDS.forEach { command ->
                     if (!base.contains(command)) builder.add(command)
                 }
                 return builder.build()
-            }
-
-            override fun getAvailableCommands(): Player.Commands = forceCommands(super.getAvailableCommands())
-
-            override fun addListener(listener: Player.Listener) {
-                val wrapped = object : Player.Listener by listener {
-                    override fun onAvailableCommandsChanged(availableCommands: Player.Commands) {
-                        listener.onAvailableCommandsChanged(forceCommands(availableCommands))
-                    }
-
-                    override fun onEvents(player: Player, events: Player.Events) {
-                        // ส่งต่อ forwardingPlayer (ตัวห่อของเรา) แทน player ตัวจริงที่ ExoPlayer แนบ
-                        // มาเอง กัน MediaSession เผลออ่าน getAvailableCommands() จาก ExoPlayer ตัวจริง
-                        // ต่อจาก event นี้แทนที่จะอ่านจากตัวห่อที่ forced commands ไว้แล้ว
-                        listener.onEvents(forwardingPlayer, events)
-                    }
-                }
-                listenerWrappers[listener] = wrapped
-                super.addListener(wrapped)
-            }
-
-            override fun removeListener(listener: Player.Listener) {
-                val wrapped = listenerWrappers.remove(listener) ?: listener
-                super.removeListener(wrapped)
             }
 
             override fun seekToNext() {
