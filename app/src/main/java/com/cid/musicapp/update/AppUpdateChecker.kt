@@ -12,9 +12,7 @@ import org.json.JSONObject
  * เช็คว่ามี build ใหม่กว่าบน GitHub Releases ไหม โดยเทียบกับ BuildConfig.BUILD_NUMBER
  * (เลข build เอามาจาก GITHUB_RUN_NUMBER ตอน CI build — ดู build.yml)
  */
-class AppUpdateChecker {
-
-    private val client = OkHttpClient()
+class AppUpdateChecker(private val client: OkHttpClient) {
 
     /** คืนค่า null ถ้าไม่มีเวอร์ชันใหม่กว่า หรือเช็คไม่สำเร็จ (เช่นไม่มีเน็ต) */
     suspend fun checkForUpdate(currentBuildNumber: Int): UpdateInfo? = withContext(Dispatchers.IO) {

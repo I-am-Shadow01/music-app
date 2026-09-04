@@ -92,6 +92,10 @@ class PlayerController(
 
     private var sleepTimerJob: Job? = null
 
+    // job ของตัวนับตำแหน่งเพลง (startPositionTicker) — เก็บไว้ให้ release() ยกเลิกด้วย
+    // (เดิมปล่อย loop วิ่งตลอดอายุ scope แม้ release() ไปแล้ว controller เป็น null ก็ยัง wake ทุก 500ms)
+    private var positionTickerJob: Job? = null
+
     private val _state = MutableStateFlow(PlaybackUiState())
     val state: StateFlow<PlaybackUiState> = _state
 
@@ -149,7 +153,8 @@ class PlayerController(
 
     /** อัปเดตตำแหน่งเพลงทุกครึ่งวินาทีระหว่างเล่น กัน seek bar ค้าง/ไม่ขยับ */
     private fun startPositionTicker() {
-        scope.launch {
+        if (positionTickerJob != null) return // เริ่มครั้งเดียวพอ — connect() อาจถูกเรียกซ้ำได้ในทางทฤษฎี
+        positionTickerJob = scope.launch {
             while (isActive) {
                 val player = controller
                 if (player != null && player.isPlaying) {
@@ -461,6 +466,15 @@ class PlayerController(
         _state.value = _state.value.copy(errorMessage = null)
     }
 
+    /**
+     * ลองเล่นเพลงปัจจุบัน (ตาม orderPosition ที่ชี้ไว้) ซ้ำอีกครั้ง — ใช้กับปุ่ม "ลองใหม่" บน Snackbar
+     * ตอนเล่นไม่สำเร็จ (เช่น resolve ลิงก์พลาด/เน็ตหลุดชั่วขณะ) — ผ่าน launchPlayCurrent() จึงได้
+     * กลไก cancel job เก่า + isResolving แบบเดียวกับการกดเล่นปกติทุกประการ
+     */
+    fun retryPlayback() {
+        launchPlayCurrent(0L)
+    }
+
     private fun syncStateFrom(player: Player) {
         _state.value = _state.value.copy(
             isPlaying = player.isPlaying,
@@ -480,6 +494,8 @@ class PlayerController(
         }
         playJob?.cancel()
         sleepTimerJob?.cancel()
+        positionTickerJob?.cancel()
+        positionTickerJob = null
         controller?.release()
         controller = null
     }

@@ -10,11 +10,13 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.cid.musicapp.config.AppConstants
 
 @Composable
 fun MusicAppTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    accentColor: Color = Color(0xFF7C4DFF),
+    // ค่าเริ่มต้นดึงจาก AppConstants จุดเดียวกับ AppSettings — เดิมเคย hardcode สีเดียวกันไว้ที่นี่ซ้ำ
+    accentColor: Color = Color(AppConstants.DEFAULT_ACCENT_COLOR_ARGB),
     // Material You: ดึงสีจากวอลเปเปอร์เครื่องแทนสี accent ที่เลือกเอง — ใช้ได้เฉพาะ Android 12+ (API 31)
     // เครื่องที่ต่ำกว่านี้จะ fallback กลับไปใช้ accentColor ปกติเสมอ ไม่ว่าค่านี้จะเป็นอะไร
     useDynamicColor: Boolean = false,

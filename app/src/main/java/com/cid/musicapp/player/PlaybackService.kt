@@ -40,6 +40,13 @@ class PlaybackService : MediaSessionService() {
                     .build(),
                 /* handleAudioFocus = */ true
             )
+            // ถอดหูฟัง/หูฟังบลูทูธหลุดกลางคัน → หยุดเล่นอัตโนมัติ แทนที่จะเปลี่ยนไปเปิดเสียงผ่าน
+            // ลำโพงเครื่องดังต่อแบบไม่รู้ตัว (พฤติกรรมมาตรฐานของแอปเพลง ดูเอกสาร Media3 ส่วน setHandleAudioBecomingNoisy)
+            .setHandleAudioBecomingNoisy(true)
+            // คุม CPU/WiFi ให้ตื่นอยู่ระหว่างสตรีมเพลงเมื่อจอปิด กันเครื่องเข้าโหมดประหยัดไฟแล้วเพลงสะดุด
+            // (ต้องใช้คู่กับ foreground service ซึ่งมีอยู่แล้ว + ประกาศ android.permission.WAKE_LOCK
+            // ใน AndroidManifest — ดูเอกสาร Media3 ส่วน setWakeMode)
+            .setWakeMode(androidx.media3.common.C.WAKE_MODE_NETWORK)
             .build()
 
         exoPlayer.repeatMode = Player.REPEAT_MODE_OFF

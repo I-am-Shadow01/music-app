@@ -13,9 +13,10 @@ import okhttp3.Request
 import java.io.File
 
 /** ดาวน์โหลด APK จาก URL แล้วส่งให้ตัวติดตั้งของระบบเปิด */
-class ApkInstaller(private val context: Context) {
-
-    private val client = OkHttpClient()
+class ApkInstaller(
+    private val context: Context,
+    private val client: OkHttpClient
+) {
 
     fun hasInstallPermission(): Boolean =
         context.packageManager.canRequestPackageInstalls()
