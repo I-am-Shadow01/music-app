@@ -3,6 +3,8 @@ name: Build Debug APK
 on:
   push:
     branches: [ "main" ]
+  # build ตรวจสอบทุก pull request ก่อน merge เสมอ — ให้เห็นว่า compile ผ่านจริงก่อนไปโผล่บน main
+  pull_request:
   workflow_dispatch: {}
 
 permissions:
@@ -34,7 +36,10 @@ jobs:
           path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 90
 
+      # ปล่อย release เฉพาะตอน push ไป main เท่านั้น — ถ้าปล่อยจาก PR ด้วย แอปของผู้ใช้ที่เปิด
+      # auto-update จะเห็น "เวอร์ชันใหม่" ที่ยังไม่ผ่านการ merge/review ทันที
       - name: Publish GitHub Release (for in-app auto-update)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
