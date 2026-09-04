@@ -3,10 +3,11 @@ package com.cid.musicapp.ui.favorites
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,7 +27,8 @@ import com.cid.musicapp.ui.util.formatDurationSeconds
 @Composable
 fun FavoritesScreen(
     viewModel: FavoritesViewModel,
-    onTrackSelected: (List<Track>, Int) -> Unit
+    onTrackSelected: (List<Track>, Int) -> Unit,
+    onPlayAll: (List<Track>) -> Unit
 ) {
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
 
@@ -37,14 +39,36 @@ fun FavoritesScreen(
         return
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-        items(favorites, key = { it.id }) { track ->
-            val index = favorites.indexOf(track)
-            FavoriteRow(
-                track = track,
-                onClick = { onTrackSelected(favorites, index) },
-                onRemove = { viewModel.removeFavorite(track.id) }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                stringResource(R.string.favorites_title),
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f)
             )
+            // เล่นทั้งหมดเป็นคิว เริ่มจากเพลงโปรดล่าสุดบนสุด (เรียงตามลิสต์ที่โชว์)
+            TextButton(onClick = { onPlayAll(favorites) }) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(stringResource(R.string.favorites_play_all))
+            }
+        }
+
+        LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+            // itemsIndexed + key ต่อ id — เดิมคำนวณ index ด้วย favorites.indexOf(track) ต่อแถวใน composition
+            // ซึ่งเป็น O(n) ทุกครั้งที่ recompose ลิสต์ยาวๆ จึงกลายเป็น O(n²) เปล่าๆ
+            itemsIndexed(favorites, key = { _, track -> track.id }) { index, track ->
+                FavoriteRow(
+                    track = track,
+                    onClick = { onTrackSelected(favorites, index) },
+                    onRemove = { viewModel.removeFavorite(track.id) }
+                )
+            }
         }
     }
 }

@@ -45,6 +45,10 @@
 
     <string name="mini_player_dismiss">หยุดเล่นและปิดแถบเพลง</string>
 
+    <string name="error_retry">ลองใหม่</string>
+
+    <string name="favorites_title">เพลงโปรด</string>
+    <string name="favorites_play_all">เล่นทั้งหมด</string>
     <string name="favorites_empty_state">ยังไม่มีเพลงโปรด — กดรูปหัวใจที่เพลงที่ชอบเพื่อเก็บไว้ที่นี่</string>
     <string name="favorites_remove">เอาออกจากเพลงโปรด</string>
 

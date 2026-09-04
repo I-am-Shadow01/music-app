@@ -3,13 +3,13 @@ package com.cid.musicapp.ui.player
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.Player
+import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.Track
 import com.cid.musicapp.player.PlaybackMode
 import com.cid.musicapp.player.PlayerController
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -21,9 +21,8 @@ class PlayerViewModel(
     val state = playerController.state
 
     /** เพลงที่กดใจไว้ทั้งหมด เก็บแค่ id ไว้เทียบว่าเพลงที่กำลังเล่นอยู่ตอนนี้กดใจไว้หรือยัง */
-    val favoriteIds: StateFlow<Set<String>> = appSettings.favoriteTracksFlow
-        .map { tracks -> tracks.map { it.id }.toSet() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+    val favoriteIds: StateFlow<Set<String>> = appSettings.favoriteTrackIdsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(AppConstants.STATE_FLOW_STOP_TIMEOUT_MILLIS), emptySet())
 
     init {
         viewModelScope.launch { playerController.connect() }

@@ -44,7 +44,7 @@ class MainActivity : ComponentActivity() {
                 initialValue = AppConstants.DEFAULT_ACCENT_COLOR_ARGB
             )
             val dynamicColorEnabled by container.appSettings.dynamicColorEnabledFlow.collectAsStateWithLifecycle(
-                initialValue = false
+                initialValue = AppConstants.DEFAULT_DYNAMIC_COLOR_ENABLED
             )
             val darkTheme = when (themeMode) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()

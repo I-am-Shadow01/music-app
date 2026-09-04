@@ -16,6 +16,9 @@ object AppConstants {
 
     // --- แคชลิงก์เสียงที่ resolve แล้ว ---
     const val STREAM_CACHE_TTL_MILLIS = 20 * 60 * 1000L // 20 นาที
+    // จำกัดจำนวนรายการสูงสุดในแคชลิงก์เสียง — เกินนี้ตัดรายการที่ไม่ได้ใช้นานสุด (LRU) ทิ้ง
+    // กันแคชโตไม่มีที่สิ้นสุดถ้าผู้ใช้เล่นเพลงต่อเนื่องนานๆ (เดิมแคชโตได้ไม่จำกัดจนปิดแอป)
+    const val MAX_STREAM_CACHE_ENTRIES = 64
 
     // --- พฤติกรรมเครื่องเล่น ---
     const val POSITION_TICKER_INTERVAL_MILLIS = 500L
@@ -80,4 +83,27 @@ object AppConstants {
 
     // ข้อความยืนยันชั่วคราวในหน้าตั้งค่า (เช่น "ล้างแคชแล้ว") แสดงนานแค่นี้ก่อนหายไปเอง
     const val SETTINGS_CONFIRMATION_MESSAGE_MILLIS = 3000L
+
+    // --- ค่าเริ่มต้นของค่าตั้งค่า (ใช้ทั้งใน AppSettings และ initialValue ตอน collect ใน UI) ---
+    const val DEFAULT_AUTO_ADVANCE_ENABLED = true
+    const val DEFAULT_AUTO_CHECK_UPDATES_ENABLED = true
+    const val DEFAULT_DEV_MODE_ENABLED = false
+    const val DEFAULT_DYNAMIC_COLOR_ENABLED = false
+
+    // --- network (เช็คอัปเดต + โหลด APK) — ใช้กับ OkHttpClient ตัวเดียวที่แชร์กันทั้งแอป ---
+    const val NETWORK_CONNECT_TIMEOUT_SECONDS = 15L
+    const val NETWORK_READ_TIMEOUT_SECONDS = 30L
+
+    // --- ระยะเวลา (หน่วยเวลาฐาน) ---
+    const val MILLIS_PER_MINUTE = 60_000L
+
+    // --- thumbnail ที่เลือกจากผลค้นหา — เลือกรูปที่สูงอย่างน้อยเท่านี้ (px) แล้วเอาตัวเล็กสุดที่ผ่านเกณฑ์
+    // ~320px พอดีกับทั้งแถวผลค้นหา (56dp) และภาพใหญ่ในหน้ากำลังเล่น โดยไม่ต้องโหลด maxres เปลืองๆ ---
+    const val THUMBNAIL_MIN_HEIGHT_PX = 320
+
+    // --- ระยะลากแนวตั้งในแถวคิว "ถัดไป" ที่ถือว่าขยับหนึ่งตำแหน่ง (dp, ~ความสูงหนึ่งแถว) ---
+    const val QUEUE_DRAG_STEP_DP = 56f
+
+    // --- StateFlow ที่ได้จาก stateIn() จะหยุดเก็บค่าหลังไม่มีผู้ฟังนานเท่านี้ (ค่า default ของ WhileSubscribed) ---
+    const val STATE_FLOW_STOP_TIMEOUT_MILLIS = 5000L
 }

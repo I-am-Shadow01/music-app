@@ -39,6 +39,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -62,6 +63,12 @@ fun PlayerScreen(viewModel: PlayerViewModel, onCollapse: () -> Unit) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val favoriteIds by viewModel.favoriteIds.collectAsStateWithLifecycle()
     val haptic = LocalHapticFeedback.current
+
+    // โหมดวิดีโอ: ค้างจอไว้ระหว่างดู ไม่ให้เครื่องดับจอเองกลางคัน — ใช้ FLAG_KEEP_SCREEN_ON
+    // (ตัดออกเองเมื่อออกจากโหมดวิดีโอ/ออกจากหน้านี้ ระบบจะกลับไปใช้พฤติกรรมปกติ)
+    if (state.playbackMode == PlaybackMode.VIDEO) {
+        KeepScreenOnWhileComposed()
+    }
 
     if (state.currentTitle == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -102,7 +109,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onCollapse: () -> Unit) {
             )
             SleepTimerButton(
                 remainingMs = state.sleepTimerRemainingMs,
-                onSetTimer = { minutes -> viewModel.setSleepTimer(minutes * 60_000L) },
+                onSetTimer = { minutes -> viewModel.setSleepTimer(minutes * AppConstants.MILLIS_PER_MINUTE) },
                 onCancelTimer = { viewModel.cancelSleepTimer() }
             )
             IconButton(onClick = {
@@ -213,7 +220,10 @@ fun PlayerScreen(viewModel: PlayerViewModel, onCollapse: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
 
             Slider(
-                value = dragPositionMs ?: state.positionMs.toFloat(),
+                // coerce เผื่อไว้เป็นด่านกันตัว: ระหว่างสลับเพลง ตำแหน่งเก่าอาจยังค้างมากกว่า duration ของ
+                // เพลงใหม่ชั่วขณะ (ก่อน tick ถัดไป sync) — ค่าที่ลอยเกิน valueRange ไม่ควรปล่อยผ่านเข้า Slider
+                value = (dragPositionMs ?: state.positionMs.toFloat())
+                    .coerceIn(0f, state.durationMs.toFloat().coerceAtLeast(1f)),
                 valueRange = 0f..(state.durationMs.toFloat().coerceAtLeast(1f)),
                 onValueChange = { dragPositionMs = it },
                 onValueChangeFinished = {
@@ -436,6 +446,22 @@ private fun SleepTimerButton(
     }
 }
 
+/**
+ * ค้างจอไว้ (FLAG_KEEP_SCREEN_ON) ตลอดที่ composable นี้ถูกแสดงผล และคืนค่าเมื่อหายไปจาก composition
+ * — ใช้กับโหมดวิดีโอเพื่อไม่ให้จอดับเองระหว่างดู ไม่ต้องขอ permission ใดๆ (พฤติกรรมเดียวกับ YouTube)
+ */
+@Composable
+private fun KeepScreenOnWhileComposed() {
+    val view = LocalView.current
+    DisposableEffect(Unit) {
+        val window = (view.context as? android.app.Activity)?.window
+        window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+}
+
 /** วนไปยังความเร็วถัดไปใน AppConstants.PLAYBACK_SPEED_PRESETS (วนกลับตัวแรกเมื่อถึงตัวสุดท้าย) */
 private fun nextPlaybackSpeed(current: Float): Float {
     val presets = AppConstants.PLAYBACK_SPEED_PRESETS
@@ -458,7 +484,7 @@ private fun UpcomingRow(
     val haptic = LocalHapticFeedback.current
     val density = LocalDensity.current
     // ระยะสะสมของการลากแนวตั้งก่อนถือว่าเป็น "ขยับหนึ่งตำแหน่ง" — ประมาณความสูงหนึ่งแถวพอดี
-    val dragThresholdPx = with(density) { 56.dp.toPx() }
+    val dragThresholdPx = with(density) { AppConstants.QUEUE_DRAG_STEP_DP.dp.toPx() }
     var dragAccumulatorPx by remember(item.orderPosition) { mutableFloatStateOf(0f) }
 
     val dismissState = rememberSwipeToDismissBoxState(

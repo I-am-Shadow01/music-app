@@ -2,6 +2,7 @@ package com.cid.musicapp.ui.favorites
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.Track
 import kotlinx.coroutines.flow.SharingStarted
@@ -13,7 +14,7 @@ import kotlinx.coroutines.launch
 class FavoritesViewModel(private val appSettings: AppSettings) : ViewModel() {
 
     val favorites: StateFlow<List<Track>> = appSettings.favoriteTracksFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(AppConstants.STATE_FLOW_STOP_TIMEOUT_MILLIS), emptyList())
 
     fun removeFavorite(trackId: String) {
         viewModelScope.launch { appSettings.removeFavorite(trackId) }

@@ -56,17 +56,17 @@ class AppSettings(context: Context) {
 
     /** เพลงจบแล้วเล่นเพลงถัดไปในคิวต่อเองไหม (ปิดได้ถ้าอยากฟังทีละเพลงแล้วหยุด) */
     val autoAdvanceFlow: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[KEY_AUTO_ADVANCE] ?: true
+        prefs[KEY_AUTO_ADVANCE] ?: AppConstants.DEFAULT_AUTO_ADVANCE_ENABLED
     }
 
     /** เช็คอัปเดตอัตโนมัติตอนเปิดแอปไหม (ปิดได้ถ้าอยากเช็คเองจากหน้าตั้งค่าเท่านั้น) */
     val autoCheckUpdatesFlow: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[KEY_AUTO_CHECK_UPDATES] ?: true
+        prefs[KEY_AUTO_CHECK_UPDATES] ?: AppConstants.DEFAULT_AUTO_CHECK_UPDATES_ENABLED
     }
 
     /** โหมดนักพัฒนา — โชว์ข้อมูล debug ละเอียดในหน้าตั้งค่า */
     val devModeEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[KEY_DEV_MODE] ?: false
+        prefs[KEY_DEV_MODE] ?: AppConstants.DEFAULT_DEV_MODE_ENABLED
     }
 
     /** คำค้นหาล่าสุด เรียงใหม่สุดอยู่บนสุด — เก็บเป็น JSON array ในค่า string เดียว (ไม่ใช้ Set เพราะ Set ไม่รักษาลำดับ) */
@@ -76,7 +76,7 @@ class AppSettings(context: Context) {
 
     /** ใช้สีธีมจากวอลเปเปอร์เครื่อง (Material You) แทนสี accent ที่เลือกเอง — มีผลเฉพาะ Android 12+ เท่านั้น */
     val dynamicColorEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
-        prefs[KEY_DYNAMIC_COLOR] ?: false
+        prefs[KEY_DYNAMIC_COLOR] ?: AppConstants.DEFAULT_DYNAMIC_COLOR_ENABLED
     }
 
     /** คุณภาพวิดีโอเป้าหมายตอนเล่นโหมดวิดีโอ เก็บเป็นความสูง px ตรงๆ (เช่น 480 = 480p) */
@@ -89,6 +89,11 @@ class AppSettings(context: Context) {
     val favoriteTracksFlow: Flow<List<Track>> = dataStore.data.map { prefs ->
         decodeFavoriteTracks(prefs[KEY_FAVORITE_TRACKS])
     }
+
+    /** แค่ set ของ id เพลงโปรด — ไว้เช็ค "เพลงนี้กดใจแล้วหรือยัง" ในแต่ละแถวของลิสต์/หน้าเล่น
+     * (รวม logic แปลงจาก favoriteTracksFlow ไว้จุดเดียว แทนที่แต่ละ ViewModel จะแม็พเองซ้ำกันหลายที่) */
+    val favoriteTrackIdsFlow: Flow<Set<String>> = favoriteTracksFlow
+        .map { tracks -> tracks.map { it.id }.toSet() }
 
     private fun decodeFavoriteTracks(raw: String?): List<Track> {
         if (raw.isNullOrBlank()) return emptyList()
@@ -198,7 +203,9 @@ class AppSettings(context: Context) {
     suspend fun removeRecentSearch(query: String) {
         dataStore.edit { prefs ->
             val current = decodeRecentSearches(prefs[KEY_RECENT_SEARCHES])
-            val updated = current.filterNot { it == query }
+            // เทียบแบบไม่สนตัวพิมพ์ให้ตรงกับ addRecentSearch() — เดิมตรงเป๊ะเท่านั้น ทำให้ลบ "test"
+            // ไม่ออกถ้าเก็บไว้เป็น "Test"
+            val updated = current.filterNot { it.equals(query, ignoreCase = true) }
             prefs[KEY_RECENT_SEARCHES] = JSONArray(updated).toString()
         }
     }

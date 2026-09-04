@@ -1,30 +1,16 @@
 package com.cid.musicapp.ui.navigation
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
@@ -35,16 +21,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import coil.compose.AsyncImage
-import coil.request.ImageRequest
-import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
-import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.R
 import com.cid.musicapp.di.AppContainer
-import com.cid.musicapp.player.PlaybackUiState
 import com.cid.musicapp.ui.favorites.FavoritesScreen
 import com.cid.musicapp.ui.favorites.FavoritesViewModel
+import com.cid.musicapp.ui.player.MiniPlayerBar
 import com.cid.musicapp.ui.player.PlayerScreen
 import com.cid.musicapp.ui.player.PlayerViewModel
 import com.cid.musicapp.ui.search.SearchScreen
@@ -110,12 +92,20 @@ fun AppNavHost(container: AppContainer) {
         navController.navigate(ROUTE_PLAYER) { launchSingleTop = true }
     }
 
-    // แสดง error เป็น Snackbar ครั้งเดียวต่อ error หนึ่งอัน แล้วเคลียร์ทิ้ง
+    // แสดง error เป็น Snackbar ครั้งเดียวต่อ error หนึ่งอัน แล้วเคลียร์ทิ้ง — มีปุ่ม "ลองใหม่" ให้กด
+    // เล่นเพลงเดิมซ้ำอีกรอบได้ทันที ไม่ต้องกด next/เลือกเพลงใหม่เอง (เช่นตอนเน็ตหลุดชั่วขณะ)
+    val retryActionLabel = stringResource(R.string.error_retry)
     LaunchedEffect(playbackState.errorMessage) {
         val message = playbackState.errorMessage
         if (message != null) {
-            snackbarHostState.showSnackbar(message)
+            val result = snackbarHostState.showSnackbar(
+                message = message,
+                actionLabel = retryActionLabel
+            )
             container.playerController.dismissError()
+            if (result == SnackbarResult.ActionPerformed) {
+                container.playerController.retryPlayback()
+            }
         }
     }
 
@@ -152,7 +142,7 @@ fun AppNavHost(container: AppContainer) {
             }
         }
     ) { padding ->
-        Column(modifier = Modifier.padding(padding)) {
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
             UpdateBanner(viewModel = updateViewModel)
 
             NavHost(
@@ -197,6 +187,12 @@ fun AppNavHost(container: AppContainer) {
                         onTrackSelected = { tracks, index ->
                             container.playerController.playQueue(tracks, index)
                             openPlayer()
+                        },
+                        onPlayAll = { tracks ->
+                            if (tracks.isNotEmpty()) {
+                                container.playerController.playQueue(tracks, 0)
+                                openPlayer()
+                            }
                         }
                     )
                 }
@@ -227,110 +223,6 @@ fun AppNavHost(container: AppContainer) {
                         playbackState = playbackState
                     )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MiniPlayerBar(
-    state: PlaybackUiState,
-    onTogglePlayPause: () -> Unit,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
-    onDismiss: () -> Unit,
-    onClick: () -> Unit
-) {
-    val progress = if (state.durationMs > 0) {
-        (state.positionMs.toFloat() / state.durationMs.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
-    }
-    val shape = RoundedCornerShape(16.dp)
-    val haptic = LocalHapticFeedback.current
-    val density = LocalDensity.current
-    val swipeThresholdPx = with(density) { AppConstants.MINI_PLAYER_SWIPE_THRESHOLD_DP.dp.toPx() }
-    var dragAccumulatorPx by remember { mutableFloatStateOf(0f) }
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 10.dp)
-            .padding(bottom = 6.dp)
-            .shadow(elevation = 6.dp, shape = shape, clip = false)
-            .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .pointerInput(Unit) {
-                // ปัดซ้าย = เพลงถัดไป, ปัดขวา = เพลงก่อนหน้า — เหมือนแอปเพลงทั่วไป
-                detectHorizontalDragGestures(
-                    onDragEnd = {
-                        when {
-                            dragAccumulatorPx <= -swipeThresholdPx -> {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onNext()
-                            }
-                            dragAccumulatorPx >= swipeThresholdPx -> {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onPrevious()
-                            }
-                        }
-                        dragAccumulatorPx = 0f
-                    },
-                    onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
-                        dragAccumulatorPx += dragAmount
-                    }
-                )
-            }
-            .clickable(onClick = onClick)
-    ) {
-        // แถบบางๆ บอกความคืบหน้าเพลงปัจจุบัน (เหมือน Spotify) — ให้เห็นเหลืออีกนานแค่ไหนโดยไม่ต้องเข้าไปหน้า Player
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier.fillMaxWidth().height(2.dp)
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(state.currentThumbnailUrl)
-                    .crossfade(AppConstants.IMAGE_CROSSFADE_MILLIS)
-                    .build(),
-                contentDescription = null,
-                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    state.currentTitle ?: "",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1
-                )
-                Text(
-                    state.currentArtist ?: "",
-                    style = MaterialTheme.typography.labelSmall,
-                    maxLines = 1
-                )
-            }
-            if (state.isResolving) {
-                CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
-            } else {
-                IconButton(onClick = onTogglePlayPause) {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = null
-                    )
-                }
-            }
-            IconButton(onClick = onDismiss) {
-                Icon(
-                    Icons.Default.Close,
-                    contentDescription = stringResource(R.string.mini_player_dismiss)
-                )
             }
         }
     }

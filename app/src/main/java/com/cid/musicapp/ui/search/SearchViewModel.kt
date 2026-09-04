@@ -12,7 +12,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -36,9 +35,8 @@ class SearchViewModel(
     val uiState: StateFlow<SearchUiState> = _uiState
 
     /** เพลงที่กดใจไว้ — ใช้เทียบว่าเพลงแต่ละแถวในผลค้นหาต้องโชว์หัวใจทึบหรือกลวง */
-    val favoriteIds: StateFlow<Set<String>> = appSettings.favoriteTracksFlow
-        .map { tracks -> tracks.map { it.id }.toSet() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+    val favoriteIds: StateFlow<Set<String>> = appSettings.favoriteTrackIdsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(AppConstants.STATE_FLOW_STOP_TIMEOUT_MILLIS), emptySet())
 
     // job ของการค้นหา/โหลดเพิ่มที่กำลังทำงานอยู่ (ถ้ามี) — เก็บไว้เพื่อ cancel ตัวเก่าทิ้งเวลามีคำสั่งใหม่เข้ามา
     // กัน race condition: ถ้าไม่ cancel แล้วผู้ใช้ค้นหาซ้อนกันเร็วๆ ผลของคำค้นหาที่ตอบช้ากว่าอาจมาทับ
@@ -106,9 +104,12 @@ class SearchViewModel(
             _uiState.update { it.copy(isLoading = true, errorMessage = null) }
             try {
                 val page = repository.search(query)
+                // ตัดรายการ id ซ้ำก่อนโชว์เสมอ — YouTube บางงวงคืนเพลงเดิมซ้ำทั้งข้ามหน้าและในหน้าเดียวกัน
+                // ถ้าไม่ตัด LazyColumn ที่ใช้ track.id เป็น key จะ crash ทันทีเมื่อเจอ key ซ้ำ
+                val uniqueTracks = page.tracks.distinctBy { it.id }
                 _uiState.update {
                     it.copy(
-                        results = page.tracks,
+                        results = uniqueTracks,
                         canLoadMore = page.hasMore,
                         isLoading = false
                     )
@@ -142,7 +143,8 @@ class SearchViewModel(
                 val page = repository.loadMoreSearchResults()
                 _uiState.update {
                     it.copy(
-                        results = it.results + page.tracks,
+                        // distinctBy ทั้งลิสต์รวม (ไม่ใช่แค่หน้าใหม่) — กันเพลงซ้ำข้ามหน้าจน LazyColumn เจอ key ซ้ำ
+                        results = (it.results + page.tracks).distinctBy { track -> track.id },
                         canLoadMore = page.hasMore,
                         isLoadingMore = false
                     )
