@@ -24,10 +24,6 @@ class PlayerViewModel(
     val favoriteIds: StateFlow<Set<String>> = appSettings.favoriteTrackIdsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(AppConstants.STATE_FLOW_STOP_TIMEOUT_MILLIS), emptySet())
 
-    init {
-        viewModelScope.launch { playerController.connect() }
-    }
-
     fun togglePlayPause() = playerController.togglePlayPause()
 
     fun seekTo(positionMs: Long) = playerController.seekTo(positionMs)

@@ -23,6 +23,7 @@ data class SearchUiState(
     val isLoadingMore: Boolean = false,
     val canLoadMore: Boolean = false,
     val errorMessage: String? = null,
+    val loadMoreFailed: Boolean = false,
     val recentSearches: List<String> = emptyList()
 )
 
@@ -56,9 +57,14 @@ class SearchViewModel(
     }
 
     fun onQueryChange(newQuery: String) {
-        _uiState.update { it.copy(query = newQuery) }
-
         autoSearchJob?.cancel()
+        searchJob?.cancel()
+        repository.invalidateSearch()
+        _uiState.update {
+            it.copy(query = newQuery, results = emptyList(), isLoading = false,
+                isLoadingMore = false, canLoadMore = false, errorMessage = null,
+                loadMoreFailed = false)
+        }
         val trimmed = newQuery.trim()
         if (trimmed.length >= AppConstants.SEARCH_AUTO_MIN_QUERY_LENGTH) {
             autoSearchJob = viewModelScope.launch {
@@ -97,13 +103,18 @@ class SearchViewModel(
     }
 
     private fun runSearch(query: String) {
-        if (query.isBlank()) return
+        autoSearchJob?.cancel()
+        if (query.isBlank()) {
+            onQueryChange(query)
+            return
+        }
 
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            _uiState.update { it.copy(isLoading = true, isLoadingMore = false, canLoadMore = false,
+                loadMoreFailed = false, errorMessage = null) }
             try {
-                val page = repository.search(query)
+                val page = repository.search(query.trim())
                 // ตัดรายการ id ซ้ำก่อนโชว์เสมอ — YouTube บางงวงคืนเพลงเดิมซ้ำทั้งข้ามหน้าและในหน้าเดียวกัน
                 // ถ้าไม่ตัด LazyColumn ที่ใช้ track.id เป็น key จะ crash ทันทีเมื่อเจอ key ซ้ำ
                 val uniqueTracks = page.tracks.distinctBy { it.id }
@@ -131,14 +142,20 @@ class SearchViewModel(
         }
     }
 
+    override fun onCleared() {
+        repository.invalidateSearch()
+        super.onCleared()
+    }
+
     /** โหลดผลค้นหาหน้าถัดไปต่อจากลิสต์ปัจจุบัน — เรียกตอนเลื่อนใกล้สุดลิสต์ (ดู SearchScreen) */
-    fun loadMore() {
+    fun loadMore(isRetry: Boolean = false) {
         val state = _uiState.value
-        if (!state.canLoadMore || state.isLoading || state.isLoadingMore) return
+        if (!state.canLoadMore || state.isLoading || state.isLoadingMore ||
+            (state.loadMoreFailed && !isRetry)) return
 
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingMore = true) }
+            _uiState.update { it.copy(isLoadingMore = true, loadMoreFailed = false) }
             try {
                 val page = repository.loadMoreSearchResults()
                 _uiState.update {
@@ -153,9 +170,8 @@ class SearchViewModel(
                 // เหตุผลเดียวกับใน runSearch() ด้านบน — ไม่ใช่ error จริง ต้อง rethrow เสมอ
                 throw e
             } catch (e: Exception) {
-                // โหลดเพิ่มพลาด — ไม่ล้างผลลัพธ์เดิมที่มีอยู่แล้ว แค่หยุด loading และปิด canLoadMore
-                // กันผู้ใช้เห็นลิสต์กระตุกหาย ผู้ใช้ยังเลื่อนดูของเดิมได้ตามปกติ
-                _uiState.update { it.copy(isLoadingMore = false, canLoadMore = false) }
+                // Keep the cursor/results; require an explicit retry to avoid a network-error loop.
+                _uiState.update { it.copy(isLoadingMore = false, loadMoreFailed = true) }
             }
         }
     }

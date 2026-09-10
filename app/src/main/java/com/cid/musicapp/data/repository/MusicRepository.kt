@@ -3,6 +3,8 @@ package com.cid.musicapp.data.repository
 import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import io.github.shalva97.initNewPipe
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -10,12 +12,7 @@ import org.schabi.newpipe.extractor.Image
 import org.schabi.newpipe.extractor.InfoItem
 import org.schabi.newpipe.extractor.Page
 import org.schabi.newpipe.extractor.ServiceList
-import org.schabi.newpipe.extractor.search.SearchExtractor
-import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
-import org.schabi.newpipe.extractor.stream.VideoStream
-import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.abs
 
 /** ผลค้นหาหนึ่งหน้า พร้อมบอกว่ายังมีหน้าถัดไปให้โหลดเพิ่มไหม (ใช้ทำ infinite scroll) */
 data class SearchResultPage(val tracks: List<Track>, val hasMore: Boolean)
@@ -44,26 +41,10 @@ class MusicRepository(private val appSettings: AppSettings) {
         maxEntries = AppConstants.MAX_STREAM_CACHE_ENTRIES
     )
 
-    // session ของการค้นหาปัจจุบัน — ต้องเก็บ extractor instance เดิมไว้เพราะ getPage(nextPage)
-    // เป็น method ของ extractor ตัวเดิมเท่านั้น (สร้างตัวใหม่แล้วเรียก getPage จะ error)
-    // เก็บเป็น object เดียว (single @Volatile field) ไม่ใช่สอง field แยกกัน เพราะการอ่านสอง field
-    // คนละจังหวะมีช่องให้ได้ "extractor ของค้นหาเก่า + nextPage ของค้นหาใหม่" ปนกัน (torn read)
-    // ระหว่างที่มี search ใหม่เขียนทับอยู่พอดี — เขียนทับทั้งคู่พร้อมกันใน reference เดียวจึงปลอดภัยกว่า
-    // หมายเหตุ: ตั้งใจให้รองรับแค่ 1 การค้นหาที่ active อยู่ในแต่ละครั้ง (แอปนี้มีหน้าค้นหาเดียว
-    // ไม่มีหลาย search session พร้อมกัน) — ถ้าจะเพิ่ม multi-session ในอนาคตค่อยเปลี่ยนเป็น map ตาม query
-    private data class SearchSession(val extractor: SearchExtractor, val nextPage: Page?)
+    private val searchSessions = SearchSessionStore()
 
-    @Volatile
-    private var searchSession: SearchSession? = null
-
-    // นับรุ่นของ search session — ป้องกัน race ที่ SearchViewModel.searchJob?.cancel() เพียงอย่างเดียว
-    // ปิดไม่สนิท: extractor.fetchPage()/getPage() เป็น blocking call ของ NewPipeExtractor ไม่ใช่ suspend
-    // fun ที่เช็ค cancellation ระหว่างทาง เรียก cancel() แล้วตัว thread ที่ block รอ network อยู่ "ไม่หยุด
-    // ทันที" — มันจะรันจนจบ block ก่อน ค่อยโดน CancellationException ตอน resume กลับ ถ้าคำค้นหาเก่ากว่า
-    // (ที่โดน cancel ไปแล้ว) ตอบกลับมาช้ากว่าคำค้นหาใหม่ กฎ "ต้องเป็น search ล่าสุดเท่านั้นถึงจะเขียนทับ
-    // searchSession" นี้คือด่านที่สองที่ปิดช่องโหว่จริง — ใช้ AtomicInteger เพราะตัวเลขนี้ increment/read
-    // ข้าม thread ของ Dispatchers.IO ได้
-    private val searchGeneration = AtomicInteger(0)
+    /** Called immediately on query edits, including clear and below-debounce-length queries. */
+    fun invalidateSearch() { searchSessions.invalidate() }
 
     private fun ensureInitialized() {
         if (initialized) return
@@ -76,57 +57,31 @@ class MusicRepository(private val appSettings: AppSettings) {
     }
 
     /** ค้นหาหน้าแรก — เริ่ม session ใหม่เสมอ (ทิ้ง session ค้นหาก่อนหน้า ถ้ามี) */
-    suspend fun search(query: String): SearchResultPage = withContext(Dispatchers.IO) {
-        ensureInitialized()
-
-        // จองรุ่นของตัวเองไว้ก่อนเริ่ม blocking call — ดู comment ที่ searchGeneration ด้านล่าง
-        val myGeneration = searchGeneration.incrementAndGet()
-
-        val extractor = youtube.getSearchExtractor(query, emptyList(), "")
-        extractor.fetchPage()
-
-        val page = extractor.initialPage
-
-        // เขียนทับ session state ร่วมได้ก็ต่อเมื่อยังเป็น search รุ่นล่าสุดจริงตอนนี้เท่านั้น
-        // ถ้ามี search ใหม่กว่าเริ่มไปแล้วระหว่างที่ตัวนี้ยัง block รอ network อยู่ (พิมพ์คำค้นหาใหม่เร็วๆ)
-        // ต้องทิ้งผลลัพธ์เก่าที่มาช้ากว่านี้ไป ไม่งั้น searchSession จะกลายเป็นของคำค้นหาเก่า ทั้งที่ UI
-        // กำลังโชว์ผลของคำค้นหาใหม่อยู่ — ทำให้ loadMore() ไปดึงหน้าถัดไปผิดคำ
-        // (เขียนทับเป็น object เดียวพร้อมกัน — ดูเหตุผลที่ field searchSession)
-        if (myGeneration == searchGeneration.get()) {
-            searchSession = SearchSession(extractor, page.nextPage)
+    suspend fun search(query: String): SearchResultPage {
+        // Reserve before dispatch: IO scheduling must not decide which query is newest.
+        val generation = searchSessions.invalidate()
+        return withContext(Dispatchers.IO) {
+            ensureInitialized()
+            val extractor = youtube.getSearchExtractor(query, emptyList(), "")
+            extractor.fetchPage()
+            val page = extractor.initialPage
+            currentCoroutineContext().ensureActive()
+            searchSessions.publish(SearchSessionStore.Session(generation, extractor, page.nextPage))
+            SearchResultPage(page.items.toTracks(), Page.isValid(page.nextPage))
         }
-
-        SearchResultPage(
-            tracks = page.items.toTracks(),
-            hasMore = page.nextPage != null
-        )
     }
 
-    /** โหลดผลค้นหาหน้าถัดไปของ session ที่ค้นหาไว้ล่าสุดด้วย search() — เรียกตอนเลื่อนจนใกล้สุดลิสต์ */
+    /** Continue the captured session; stale completions cannot advance a newer cursor. */
     suspend fun loadMoreSearchResults(): SearchResultPage = withContext(Dispatchers.IO) {
-        // จำรุ่นของ session ที่กำลังจะต่อหน้าไว้ ณ ตอนเริ่ม (ไม่ใช่ session ใหม่ เลยไม่ increment)
-        val myGeneration = searchGeneration.get()
-        val session = searchSession
-
-        if (session == null) {
-            return@withContext SearchResultPage(tracks = emptyList(), hasMore = false)
+        val session = searchSessions.snapshot()
+            ?: return@withContext SearchResultPage(emptyList(), false)
+        if (!Page.isValid(session.nextPage)) {
+            return@withContext SearchResultPage(emptyList(), false)
         }
-        val nextPage = session.nextPage
-            ?: return@withContext SearchResultPage(tracks = emptyList(), hasMore = false)
-
-        val nextInfoPage = session.extractor.getPage(nextPage)
-
-        // เช็คแบบเดียวกับใน search() ด้านบน — กัน session เก่าที่ getPage() เพิ่งตอบกลับมาช้า ไปเขียนทับ
-        // searchSession ของ search รุ่นใหม่กว่าที่เริ่มไปแล้วระหว่างรอ (ผลลัพธ์ของ call นี้เองถูกทิ้งไป
-        // อยู่แล้วที่ฝั่ง SearchViewModel ผ่าน CancellationException — จุดนี้กันแค่ field ภายในไม่ให้เพี้ยน)
-        if (myGeneration == searchGeneration.get()) {
-            searchSession = session.copy(nextPage = nextInfoPage.nextPage)
-        }
-
-        SearchResultPage(
-            tracks = nextInfoPage.items.toTracks(),
-            hasMore = nextInfoPage.nextPage != null
-        )
+        val page = session.extractor.getPage(session.nextPage)
+        currentCoroutineContext().ensureActive()
+        searchSessions.advance(session, page.nextPage)
+        SearchResultPage(page.items.toTracks(), Page.isValid(page.nextPage))
     }
 
     private fun List<InfoItem>.toTracks(): List<Track> =
@@ -168,23 +123,18 @@ class MusicRepository(private val appSettings: AppSettings) {
         val targetKbps = appSettings.audioBitrateKbpsFlow.first()
         val cacheKey = "${track.id}:$targetKbps"
 
+        val cacheGeneration = streamUrlCache.generation()
         streamUrlCache.get(cacheKey)?.let { return@withContext it }
 
         val extractor = youtube.getStreamExtractor(track.id)
         extractor.fetchPage()
 
-        val chosen = selectStreamForBitrate(extractor.audioStreams, targetKbps)
+        val chosen = StreamSelector.audio(extractor.audioStreams, targetKbps)
             ?: throw IllegalStateException("ไม่พบสตรีมเสียงสำหรับเพลงนี้")
 
-        streamUrlCache.put(cacheKey, chosen.content)
+        currentCoroutineContext().ensureActive()
+        streamUrlCache.put(cacheKey, chosen.content, cacheGeneration)
         chosen.content
-    }
-
-    /** เลือกสตรีมที่บิตเรตใกล้เคียงเป้าหมายที่สุด (ถ้าตั้ง kbps สูงเกินที่มีจริง จะได้ตัวสูงสุดที่มีโดยอัตโนมัติ) */
-    private fun selectStreamForBitrate(streams: List<AudioStream>, targetKbps: Int): AudioStream? {
-        if (streams.isEmpty()) return null
-        val targetBps = targetKbps * 1000
-        return streams.minByOrNull { abs(it.averageBitrate - targetBps) }
     }
 
     /**
@@ -201,27 +151,19 @@ class MusicRepository(private val appSettings: AppSettings) {
         val targetHeightPx = appSettings.videoHeightPxFlow.first()
         val cacheKey = "${track.id}:video:$targetHeightPx"
 
+        val cacheGeneration = streamUrlCache.generation()
         streamUrlCache.get(cacheKey)?.let { return@withContext it }
 
         val extractor = youtube.getStreamExtractor(track.id)
         extractor.fetchPage()
 
-        val chosen = selectStreamForHeight(extractor.videoStreams, targetHeightPx)
+        val chosen = StreamSelector.video(extractor.videoStreams, targetHeightPx)
             ?: throw IllegalStateException("ไม่พบสตรีมวิดีโอสำหรับเพลงนี้")
 
-        streamUrlCache.put(cacheKey, chosen.content)
+        currentCoroutineContext().ensureActive()
+        streamUrlCache.put(cacheKey, chosen.content, cacheGeneration)
         chosen.content
     }
-
-    /** เลือกสตรีมวิดีโอที่ความสูง (px) ใกล้เคียงเป้าหมายที่สุด */
-    private fun selectStreamForHeight(streams: List<VideoStream>, targetHeightPx: Int): VideoStream? {
-        if (streams.isEmpty()) return null
-        return streams.minByOrNull { abs(parseResolutionHeight(it.resolution) - targetHeightPx) }
-    }
-
-    /** แปลง resolution string ของ NewPipeExtractor (เช่น "720p60", "480p") เป็นความสูง px ล้วนๆ */
-    private fun parseResolutionHeight(resolution: String): Int =
-        resolution.takeWhile { it.isDigit() }.toIntOrNull() ?: 0
 
     /** ล้างแคชลิงก์เสียงที่ resolve ไว้ทั้งหมด (เรียกจากหน้าตั้งค่า) */
     fun clearStreamCache() {

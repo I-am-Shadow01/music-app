@@ -69,6 +69,8 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:${project.property("junitVersion")}")
+
     implementation(platform("androidx.compose:compose-bom:2024.09.00"))
 
     implementation("androidx.core:core-ktx:1.13.1")
