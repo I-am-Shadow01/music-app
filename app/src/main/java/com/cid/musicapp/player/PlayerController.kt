@@ -121,7 +121,8 @@ class PlayerController(
                 val generation = playbackGeneration
                 scope.launch {
                     val advance = repeatMode == RepeatMode.ONE || appSettings.autoAdvanceFlow.first()
-                    if (generation == playbackGeneration && controller?.playbackState == Player.STATE_ENDED && advance) {
+                    if (generation == playbackGeneration && !_state.value.isResolving &&
+                        controller?.playbackState == Player.STATE_ENDED && advance) {
                         advanceAfterTrackEnded()
                     }
                 }
