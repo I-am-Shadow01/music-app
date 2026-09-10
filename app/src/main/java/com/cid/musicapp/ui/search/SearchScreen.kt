@@ -52,10 +52,12 @@ fun SearchScreen(
     val listState = rememberLazyListState()
 
     // ใกล้เลื่อนถึงท้ายลิสต์แล้ว (เหลืออีกไม่กี่รายการ) → โหลดหน้าถัดไปล่วงหน้าให้เลย (infinite scroll)
-    LaunchedEffect(listState, uiState.results.size) {
+    LaunchedEffect(listState, viewModel) {
         snapshotFlow {
             val lastVisible = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            lastVisible >= uiState.results.size - AppConstants.SEARCH_LOAD_MORE_THRESHOLD_ITEMS
+            uiState.canLoadMore && !uiState.isLoading && !uiState.isLoadingMore &&
+                !uiState.loadMoreFailed &&
+                lastVisible >= uiState.results.size - AppConstants.SEARCH_LOAD_MORE_THRESHOLD_ITEMS
         }
             .distinctUntilChanged()
             .collect { nearEnd -> if (nearEnd) viewModel.loadMore() }
@@ -141,6 +143,16 @@ fun SearchScreen(
                         )
                     }
 
+                    if (uiState.loadMoreFailed) {
+                        item {
+                            TextButton(
+                                onClick = { viewModel.loadMore(isRetry = true) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.search_retry_load_more))
+                            }
+                        }
+                    }
                     if (uiState.isLoadingMore) {
                         item {
                             Box(

@@ -19,6 +19,8 @@ object AppConstants {
     // จำกัดจำนวนรายการสูงสุดในแคชลิงก์เสียง — เกินนี้ตัดรายการที่ไม่ได้ใช้นานสุด (LRU) ทิ้ง
     // กันแคชโตไม่มีที่สิ้นสุดถ้าผู้ใช้เล่นเพลงต่อเนื่องนานๆ (เดิมแคชโตได้ไม่จำกัดจนปิดแอป)
     const val MAX_STREAM_CACHE_ENTRIES = 64
+    const val STREAM_CACHE_INITIAL_CAPACITY = 16
+    const val STREAM_CACHE_LOAD_FACTOR = 0.75f
 
     // --- พฤติกรรมเครื่องเล่น ---
     const val POSITION_TICKER_INTERVAL_MILLIS = 500L

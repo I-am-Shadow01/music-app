@@ -113,4 +113,6 @@
     <string name="settings_dev_reset_confirm_title">รีเซ็ตการตั้งค่าทั้งหมด?</string>
     <string name="settings_dev_reset_confirm_body">ธีม สีหลัก คุณภาพเสียง และค่าตั้งค่าอื่นๆ ทั้งหมดจะกลับไปเป็นค่าเริ่มต้น แก้คืนไม่ได้</string>
     <string name="settings_dev_reset_done">รีเซ็ตแล้ว</string>
+    <string name="search_retry_load_more">โหลดเพิ่มไม่สำเร็จ — แตะเพื่อลองอีกครั้ง</string>
+    <string name="playback_error">เล่นไม่สำเร็จ: %1$s</string>
 </resources>

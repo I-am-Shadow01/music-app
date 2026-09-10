@@ -2,6 +2,9 @@ package com.cid.musicapp.player
 
 import android.content.ComponentName
 import android.content.Context
+import android.os.SystemClock
+import androidx.core.content.ContextCompat
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -11,7 +14,7 @@ import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.MusicRepository
 import com.cid.musicapp.data.repository.Track
-import com.google.common.util.concurrent.MoreExecutors
+import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -24,7 +27,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 enum class RepeatMode { OFF, ALL, ONE }
 
@@ -71,6 +78,9 @@ class PlayerController(
 ) {
 
     private var controller: MediaController? = null
+    private val connectionMutex = Mutex()
+    private var connectionFuture: ListenableFuture<MediaController>? = null
+    private val mainExecutor = ContextCompat.getMainExecutor(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private var queue: List<Track> = emptyList()
@@ -89,6 +99,8 @@ class PlayerController(
     // จะตอบกลับ คำขอเก่าที่ตอบช้ากว่าอาจมาทับผลของคำขอล่าสุดที่ตอบเร็วกว่า ทำให้เพลงที่เล่นจริงกลาย
     // เป็นเพลงผิดตัวจากที่ orderPosition ชี้ไว้ (เทียบเท่า pattern เดียวกับ searchJob ใน SearchViewModel)
     private var playJob: Job? = null
+    private var playbackGeneration = 0
+    private var shouldPlayWhenReady = true
 
     private var sleepTimerJob: Job? = null
 
@@ -105,13 +117,21 @@ class PlayerController(
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
-            if (playbackState == Player.STATE_ENDED) {
+            if (playbackState == Player.STATE_ENDED && !_state.value.isResolving) {
+                val generation = playbackGeneration
                 scope.launch {
-                    if (repeatMode == RepeatMode.ONE || appSettings.autoAdvanceFlow.first()) {
+                    val advance = repeatMode == RepeatMode.ONE || appSettings.autoAdvanceFlow.first()
+                    if (generation == playbackGeneration && !_state.value.isResolving &&
+                        controller?.playbackState == Player.STATE_ENDED && advance) {
                         advanceAfterTrackEnded()
                     }
                 }
             }
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            _state.value = _state.value.copy(isResolving = false,
+                errorMessage = context.getString(com.cid.musicapp.R.string.playback_error, error.errorCodeName))
         }
 
         // audioSessionId ไม่ใช่ getter บน Player เฉยๆ (มีแค่ใน ExoPlayer โดยเฉพาะ ซึ่ง MediaController
@@ -121,34 +141,39 @@ class PlayerController(
         }
     }
 
-    suspend fun connect() {
-        if (controller != null) return
-
-        val token = SessionToken(
-            context,
-            ComponentName(context, PlaybackService::class.java)
-        )
-
-        controller = suspendCancellableCoroutine { cont ->
+    suspend fun connect() = withContext(Dispatchers.Main.immediate) {
+        connectionMutex.withLock {
+            if (controller?.isConnected == true) return@withLock
+            controller?.removeListener(listener)
+            controller?.release()
+            controller = null
+            val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
             val future = MediaController.Builder(context, token).buildAsync()
-            future.addListener(
-                {
-                    val c = future.get()
-                    c.addListener(listener)
-                    if (cont.isActive) cont.resume(c)
-                },
-                MoreExecutors.directExecutor()
-            )
+            connectionFuture = future
+            try {
+                val connected = suspendCancellableCoroutine<MediaController> { cont ->
+                    cont.invokeOnCancellation {
+                        mainExecutor.execute { MediaController.releaseFuture(future) }
+                    }
+                    future.addListener({
+                        if (cont.isActive) {
+                            try { cont.resume(future.get()) }
+                            catch (e: Exception) { cont.resumeWithException(e) }
+                        }
+                    }, mainExecutor)
+                }
+                controller = connected
+                connected.addListener(listener)
+                PlaybackBridge.listener = object : PlaybackBridge.QueueNavigationListener {
+                    override fun onSkipToNext() = next()
+                    override fun onSkipToPrevious() = previous()
+                }
+                syncStateFrom(connected)
+                startPositionTicker()
+            } finally {
+                if (connectionFuture === future) connectionFuture = null
+            }
         }
-
-        // รับคำสั่ง next/previous ที่มาจากนอกแอป (หน้าจอล็อก, บลูทูธ, ปุ่มหูฟัง) ผ่าน PlaybackBridge
-        // ดู PlaybackService (ForwardingPlayer) และ PlaybackBridge.kt สำหรับรายละเอียดเต็มๆ
-        PlaybackBridge.listener = object : PlaybackBridge.QueueNavigationListener {
-            override fun onSkipToNext() = next()
-            override fun onSkipToPrevious() = previous()
-        }
-
-        startPositionTicker()
     }
 
     /** อัปเดตตำแหน่งเพลงทุกครึ่งวินาทีระหว่างเล่น กัน seek bar ค้าง/ไม่ขยับ */
@@ -170,7 +195,8 @@ class PlayerController(
 
     /** เริ่มเล่นทั้งลิสต์เป็นคิว โดยเริ่มจาก track ที่ผู้ใช้กด (startIndex) */
     fun playQueue(tracks: List<Track>, startIndex: Int) {
-        queue = tracks
+        if (tracks.isEmpty() || startIndex !in tracks.indices) return
+        queue = tracks.toList()
         order = tracks.indices.toList()
         orderPosition = order.indexOf(startIndex).coerceAtLeast(0)
 
@@ -236,10 +262,10 @@ class PlayerController(
             }
             return
         }
-        moveOrderPosition(forward = true, isAutoAdvance = true)
+        moveOrderPosition(forward = true)
     }
 
-    private fun moveOrderPosition(forward: Boolean, isAutoAdvance: Boolean = false) {
+    private fun moveOrderPosition(forward: Boolean) {
         if (order.isEmpty()) return
 
         var next = orderPosition + if (forward) 1 else -1
@@ -255,7 +281,9 @@ class PlayerController(
     }
 
     /** cancel job ของ playCurrent() ตัวก่อนหน้าเสมอก่อนเริ่มตัวใหม่ — ดูคอมเมนต์ที่ field playJob ด้านบน */
-    private fun launchPlayCurrent(resumeAtMs: Long = 0L) {
+    private fun launchPlayCurrent(resumeAtMs: Long = 0L, playWhenReady: Boolean = true) {
+        playbackGeneration++
+        shouldPlayWhenReady = playWhenReady
         playJob?.cancel()
         playJob = scope.launch { playCurrent(resumeAtMs) }
     }
@@ -274,6 +302,11 @@ class PlayerController(
     }
 
     private fun shuffleOrderKeepingCurrent() {
+        if (queue.isEmpty()) {
+            order = emptyList()
+            orderPosition = -1
+            return
+        }
         val currentQueueIndex = order.getOrNull(orderPosition) ?: 0
         val rest = queue.indices.filter { it != currentQueueIndex }.shuffled()
         order = listOf(currentQueueIndex) + rest
@@ -286,7 +319,7 @@ class PlayerController(
             RepeatMode.ALL -> RepeatMode.ONE
             RepeatMode.ONE -> RepeatMode.OFF
         }
-        _state.value = _state.value.copy(repeatMode = repeatMode)
+        publishUpcoming()
     }
 
     /** @param resumeAtMs ตำแหน่งที่จะ seek ไปทันทีหลังโหลดเสร็จ — ใช้ตอนสลับโหมดเสียง/วิดีโอกลางเพลง ไม่ใช่เริ่มเพลงใหม่ปกติ (ค่า default 0) */
@@ -301,6 +334,7 @@ class PlayerController(
         publishUpcoming()
 
         try {
+            connect()
             val streamUrl = when (playbackMode) {
                 PlaybackMode.AUDIO -> repository.resolveAudioStreamUrl(track)
                 PlaybackMode.VIDEO -> repository.resolveVideoStreamUrl(track)
@@ -313,6 +347,7 @@ class PlayerController(
                 .build()
 
             val mediaItem = MediaItem.Builder()
+                .setMediaId(track.id)
                 .setUri(streamUrl)
                 .setMediaMetadata(metadata)
                 .build()
@@ -322,7 +357,7 @@ class PlayerController(
                 prepare()
                 if (resumeAtMs > 0L) seekTo(resumeAtMs)
                 setPlaybackSpeed(playbackSpeed)
-                play()
+                playWhenReady = shouldPlayWhenReady
             }
 
             _state.value = _state.value.copy(isResolving = false, currentTrackId = track.id)
@@ -347,7 +382,8 @@ class PlayerController(
         playbackMode = mode
         _state.value = _state.value.copy(playbackMode = mode)
         val resumeAtMs = controller?.currentPosition?.coerceAtLeast(0L) ?: 0L
-        launchPlayCurrent(resumeAtMs)
+        val keepPlaying = if (_state.value.isResolving) shouldPlayWhenReady else controller?.playWhenReady ?: false
+        launchPlayCurrent(resumeAtMs, keepPlaying)
     }
 
     /** ปรับความเร็วเล่นเพลง (1.0 = ปกติ) — มีผลทันทีกับเพลงที่กำลังเล่นอยู่ */
@@ -371,7 +407,10 @@ class PlayerController(
     fun removeFromQueue(targetOrderPosition: Int) {
         if (targetOrderPosition !in order.indices || targetOrderPosition == orderPosition) return
 
+        val removedQueueIndex = order[targetOrderPosition]
+        queue = queue.toMutableList().apply { removeAt(removedQueueIndex) }
         order = order.toMutableList().apply { removeAt(targetOrderPosition) }
+            .map { if (it > removedQueueIndex) it - 1 else it }
         if (targetOrderPosition < orderPosition) {
             orderPosition -= 1
         }
@@ -393,16 +432,17 @@ class PlayerController(
 
     /**
      * ตั้งเวลาปิดเพลงอัตโนมัติ (sleep timer) — ยกเลิกตัวเก่าทิ้งเสมอก่อนเริ่มนับใหม่ (ตั้งซ้ำ = รีเซ็ตเวลา)
-     * นับถอยหลังจริงด้วย wall-clock timestamp (ไม่ใช่แค่หัก duration ทุก tick) กันเวลาคลาดเคลื่อนสะสม
+     * นับถอยหลังจริงด้วย monotonic timestamp (ไม่ใช่แค่หัก duration ทุก tick) กันเวลาคลาดเคลื่อนสะสม
      * ถ้า coroutine โดน delay ช้ากว่าที่ตั้งไว้บ้าง (เช่นระบบไปหน่วง background work)
      */
     fun setSleepTimer(durationMs: Long) {
         sleepTimerJob?.cancel()
-        val endAtMillis = System.currentTimeMillis() + durationMs
+        val endAtMillis = SystemClock.elapsedRealtime() + durationMs
         sleepTimerJob = scope.launch {
             while (isActive) {
-                val remaining = endAtMillis - System.currentTimeMillis()
+                val remaining = endAtMillis - SystemClock.elapsedRealtime()
                 if (remaining <= 0L) {
+                    shouldPlayWhenReady = false
                     controller?.pause()
                     _state.value = _state.value.copy(sleepTimerRemainingMs = null)
                     break
@@ -428,8 +468,8 @@ class PlayerController(
             queue.getOrNull(order[pos])?.let { UpcomingItem(pos, it) }
         }
         _state.value = _state.value.copy(
-            hasNext = orderPosition < order.lastIndex || repeatMode == RepeatMode.ALL,
-            hasPrevious = orderPosition > 0 || repeatMode == RepeatMode.ALL,
+            hasNext = order.isNotEmpty() && (orderPosition < order.lastIndex || repeatMode == RepeatMode.ALL),
+            hasPrevious = order.isNotEmpty() && (orderPosition > 0 || repeatMode == RepeatMode.ALL),
             isShuffleEnabled = isShuffleEnabled,
             repeatMode = repeatMode,
             upcoming = upcoming
@@ -437,6 +477,11 @@ class PlayerController(
     }
 
     fun togglePlayPause() {
+        if (_state.value.isResolving) {
+            shouldPlayWhenReady = !shouldPlayWhenReady
+            if (!shouldPlayWhenReady) controller?.pause()
+            return
+        }
         controller?.apply {
             if (isPlaying) pause() else play()
         }
@@ -444,6 +489,8 @@ class PlayerController(
 
     /** หยุดเล่นเพลง ล้างคิวทั้งหมด และซ่อน mini player bar (กดปุ่มปิดที่ mini player) */
     fun stopAndDismiss() {
+        playbackGeneration++
+        shouldPlayWhenReady = false
         playJob?.cancel()
         sleepTimerJob?.cancel()
         controller?.apply {
@@ -454,7 +501,10 @@ class PlayerController(
         queue = emptyList()
         order = emptyList()
         orderPosition = -1
-        _state.value = PlaybackUiState()
+        _state.value = PlaybackUiState(
+            isShuffleEnabled = isShuffleEnabled, repeatMode = repeatMode,
+            playbackMode = playbackMode, playbackSpeed = playbackSpeed
+        )
     }
 
     fun seekTo(positionMs: Long) {
@@ -472,12 +522,17 @@ class PlayerController(
      * กลไก cancel job เก่า + isResolving แบบเดียวกับการกดเล่นปกติทุกประการ
      */
     fun retryPlayback() {
-        launchPlayCurrent(0L)
+        val track = order.getOrNull(orderPosition)?.let { queue.getOrNull(it) } ?: return
+        val resumeAtMs = if (controller?.currentMediaItem?.mediaId == track.id) _state.value.positionMs else 0L
+        // Explicit retry must not reuse a rejected/expired URL. The cache is small and bounded.
+        repository.clearStreamCache()
+        launchPlayCurrent(resumeAtMs)
     }
 
     private fun syncStateFrom(player: Player) {
         _state.value = _state.value.copy(
             isPlaying = player.isPlaying,
+            currentTrackId = player.currentMediaItem?.mediaId?.takeIf { it.isNotBlank() },
             currentTitle = player.mediaMetadata.title?.toString(),
             currentArtist = player.mediaMetadata.artist?.toString(),
             currentThumbnailUrl = player.mediaMetadata.artworkUri?.toString(),
@@ -489,6 +544,9 @@ class PlayerController(
     }
 
     fun release() {
+        playbackGeneration++
+        connectionFuture?.let { MediaController.releaseFuture(it) }
+        connectionFuture = null
         if (PlaybackBridge.listener != null) {
             PlaybackBridge.listener = null
         }
@@ -496,6 +554,7 @@ class PlayerController(
         sleepTimerJob?.cancel()
         positionTickerJob?.cancel()
         positionTickerJob = null
+        controller?.removeListener(listener)
         controller?.release()
         controller = null
     }
