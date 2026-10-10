@@ -162,7 +162,8 @@ fun AppNavHost(container: AppContainer) {
                     SearchScreen(
                         viewModel = viewModel,
                         onTrackSelected = { tracks, index ->
-                            container.playerController.playQueue(tracks, index)
+                            // ตามค่าตั้งค่า Radio: เปิด = เล่นเพลงที่กดแล้วเติมเพลงแนะนำต่อ (ไม่ใช้ผลค้นหาเป็นคิว)
+                            container.playerController.playFromSearchResults(tracks, index)
                             openPlayer()
                         },
                         onAddToQueue = { track ->

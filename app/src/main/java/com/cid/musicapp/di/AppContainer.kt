@@ -4,7 +4,10 @@ import android.content.Context
 import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.MusicRepository
+import com.cid.musicapp.data.repository.YoutubeRadioSource
 import com.cid.musicapp.player.PlayerController
+import com.cid.musicapp.radio.RadioConfig
+import com.cid.musicapp.radio.RadioEngine
 import com.cid.musicapp.update.ApkInstaller
 import com.cid.musicapp.update.AppUpdateChecker
 import okhttp3.OkHttpClient
@@ -25,7 +28,12 @@ class AppContainer(context: Context) {
 
     val appSettings = AppSettings(context)
     val musicRepository = MusicRepository(appSettings)
-    val playerController = PlayerController(context, musicRepository, appSettings)
+
+    // Radio: ค่าปรับแต่งชุดเดียวใช้ร่วมกันระหว่าง engine (กรอง/ดึงเพลง) กับ controller (เกณฑ์เติมคิวล่วงหน้า)
+    private val radioConfig = RadioConfig()
+    private val radioEngine = RadioEngine(YoutubeRadioSource(musicRepository), radioConfig)
+
+    val playerController = PlayerController(context, musicRepository, appSettings, radioEngine, radioConfig)
     val appUpdateChecker = AppUpdateChecker(okHttpClient)
     val apkInstaller = ApkInstaller(context.applicationContext, okHttpClient)
 }

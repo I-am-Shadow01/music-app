@@ -17,6 +17,7 @@ data class SettingsUiState(
     val accentColorArgb: Int = AppConstants.DEFAULT_ACCENT_COLOR_ARGB,
     val audioBitrateKbps: Int = AppConstants.DEFAULT_AUDIO_BITRATE_KBPS,
     val autoAdvanceEnabled: Boolean = true,
+    val radioEnabled: Boolean = AppConstants.DEFAULT_RADIO_ENABLED,
     val autoCheckUpdatesEnabled: Boolean = true,
     val devModeEnabled: Boolean = false,
     val cacheClearedJustNow: Boolean = false,
@@ -60,6 +61,11 @@ class SettingsViewModel(
             }
         }
         viewModelScope.launch {
+            appSettings.radioEnabledFlow.collect { enabled ->
+                _uiState.value = _uiState.value.copy(radioEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
             appSettings.autoCheckUpdatesFlow.collect { enabled ->
                 _uiState.value = _uiState.value.copy(autoCheckUpdatesEnabled = enabled)
             }
@@ -95,6 +101,10 @@ class SettingsViewModel(
 
     fun setAutoAdvance(enabled: Boolean) {
         viewModelScope.launch { appSettings.setAutoAdvance(enabled) }
+    }
+
+    fun setRadioEnabled(enabled: Boolean) {
+        viewModelScope.launch { appSettings.setRadioEnabled(enabled) }
     }
 
     fun setAutoCheckUpdates(enabled: Boolean) {

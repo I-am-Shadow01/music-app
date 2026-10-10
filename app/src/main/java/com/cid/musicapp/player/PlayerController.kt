@@ -14,6 +14,8 @@ import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.MusicRepository
 import com.cid.musicapp.data.repository.Track
+import com.cid.musicapp.radio.RadioConfig
+import com.cid.musicapp.radio.RadioEngine
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -57,6 +59,8 @@ data class PlaybackUiState(
     val isShuffleEnabled: Boolean = false,
     val repeatMode: RepeatMode = RepeatMode.OFF,
     val upcoming: List<UpcomingItem> = emptyList(),
+    // true = เพลงถัดไปมาจาก Radio (แนะนำต่อเนื่องจากเพลงที่เลือก) ไม่ใช่ลิสต์ที่ผู้ใช้เลือกตรงๆ — ใช้ปรับหัวข้อ "ถัดไป"
+    val isRadioActive: Boolean = false,
     val playbackMode: PlaybackMode = PlaybackMode.AUDIO,
     val playbackSpeed: Float = AppConstants.DEFAULT_PLAYBACK_SPEED,
     // เวลาที่เหลือก่อนเพลงจะหยุดเองอัตโนมัติ (sleep timer) — null = ไม่ได้ตั้งไว้
@@ -74,7 +78,9 @@ data class PlaybackUiState(
 class PlayerController(
     private val context: Context,
     private val repository: MusicRepository,
-    private val appSettings: AppSettings
+    private val appSettings: AppSettings,
+    private val radioEngine: RadioEngine,
+    private val radioConfig: RadioConfig
 ) {
 
     private var controller: MediaController? = null
@@ -103,6 +109,24 @@ class PlayerController(
     private var shouldPlayWhenReady = true
 
     private var sleepTimerJob: Job? = null
+
+    // --- Radio: คิวเริ่มจากเพลงที่เลือกเพลงเดียว แล้วเติมเพลงแนะนำต่อเนื่อง (ดู RadioEngine) แทนการใช้ผลค้นหาเป็นคิว ---
+    // false = เล่นลิสต์ที่ผู้ใช้เลือกตรงๆ (เช่น เพลงโปรดทั้งหมด) ไม่เติมอะไรเอง
+    private var radioActive = false
+
+    // index (เข้า queue) ของเพลงที่ Radio เติมให้เอง — ใช้แยกจากเพลงที่ผู้ใช้เลือก/เพิ่มเอง
+    // (ผู้ใช้กด "เพิ่มเข้าคิว" ต้องได้เล่นก่อนเพลงแนะนำ ไม่ใช่ไปต่อท้ายสุดจนไม่ถึงคิวสักที)
+    private val suggestedQueueIndices = HashSet<Int>()
+
+    // job เติมเพลงแนะนำที่กำลังทำงาน (ถ้ามี) — มีได้ครั้งละหนึ่งงาน กันยิง request ซ้อน
+    private var refillJob: Job? = null
+
+    // job ที่รอเพลงแนะนำตอนผู้ใช้กดถัดไป/เพลงจบขณะคิวหมดพอดี — มีได้ครั้งละหนึ่งงาน กันกด next รัวแล้วข้ามหลายเพลง
+    private var tailAdvanceJob: Job? = null
+
+    // เพิ่มทุกครั้งที่เริ่ม/ปิด Radio หรือเปลี่ยนไปเล่นลิสต์อื่น — ผลที่เติมเสร็จทีหลังจากคิวคนละชุดแล้วต้องทิ้ง
+    // ไม่งั้นเพลงแนะนำของ session เก่าจะไปต่อท้ายคิวใหม่ (เหตุผลเดียวกับ playbackGeneration ด้านบน)
+    private var radioGeneration = 0
 
     // job ของตัวนับตำแหน่งเพลง (startPositionTicker) — เก็บไว้ให้ release() ยกเลิกด้วย
     // (เดิมปล่อย loop วิ่งตลอดอายุ scope แม้ release() ไปแล้ว controller เป็น null ก็ยัง wake ทุก 500ms)
@@ -196,6 +220,7 @@ class PlayerController(
     /** เริ่มเล่นทั้งลิสต์เป็นคิว โดยเริ่มจาก track ที่ผู้ใช้กด (startIndex) */
     fun playQueue(tracks: List<Track>, startIndex: Int) {
         if (tracks.isEmpty() || startIndex !in tracks.indices) return
+        endRadio()
         queue = tracks.toList()
         order = tracks.indices.toList()
         orderPosition = order.indexOf(startIndex).coerceAtLeast(0)
@@ -207,7 +232,33 @@ class PlayerController(
         launchPlayCurrent()
     }
 
-    /** เพิ่ม track ต่อท้ายคิว (เล่นหลังสุด) — ถ้ายังไม่มีคิวอยู่เลย ให้เริ่มเล่นทันทีแทน */
+    /**
+     * กดเล่นเพลงจากผลค้นหา — ตามค่าตั้งค่า Radio: เปิด = เริ่มคิวจากเพลงที่กดเพลงเดียวแล้วเติมเพลงแนะนำต่อเนื่อง
+     * (เพลงถัดไปไม่อิงลำดับผลค้นหา → ไม่ได้เพลงซ้ำ/คนละช่องของเพลงเดิมต่อกัน), ปิด = เล่นผลค้นหาเป็นคิวแบบเดิม
+     */
+    fun playFromSearchResults(tracks: List<Track>, index: Int) {
+        val selected = tracks.getOrNull(index) ?: return
+        scope.launch {
+            if (appSettings.radioEnabledFlow.first()) playRadio(selected) else playQueue(tracks, index)
+        }
+    }
+
+    /** เริ่ม Radio จาก [seed]: คิวมีแค่เพลงนี้ ที่เหลือ RadioEngine เติมให้เรื่อยๆ ตามที่ฟัง */
+    fun playRadio(seed: Track) {
+        endRadio()
+        queue = listOf(seed)
+        order = listOf(0)
+        orderPosition = 0
+        radioActive = true
+        radioEngine.start(seed)
+        launchPlayCurrent() // เรียก requestRadioRefill() ต่อให้เอง
+    }
+
+    /**
+     * เพิ่ม track เข้าคิว — ปกติต่อท้ายสุด; ถ้าอยู่ใน Radio จะแทรกก่อนเพลงแนะนำที่ระบบเติมไว้ (แต่หลังเพลงที่ผู้ใช้
+     * เพิ่มไว้ก่อนหน้า) เพื่อให้ได้เล่นต่อๆ กันตามที่ผู้ใช้สั่ง ไม่ถูกเพลงแนะนำบังท้ายคิว
+     * ถ้ายังไม่มีคิวอยู่เลย ให้เริ่มเล่นทันทีแทน
+     */
     fun addToQueue(track: Track) {
         if (queue.isEmpty()) {
             playQueue(listOf(track), 0)
@@ -215,8 +266,15 @@ class PlayerController(
         }
         val newQueueIndex = queue.size
         queue = queue + track
-        order = order + newQueueIndex
+        val insertAt = firstSuggestedOrderPosition() ?: order.size
+        order = order.toMutableList().apply { add(insertAt, newQueueIndex) }
         publishUpcoming()
+    }
+
+    /** ตำแหน่งใน play-order ของเพลงแนะนำตัวแรกที่ยังไม่ได้เล่น (null = ไม่อยู่ใน Radio หรือยังไม่มีเพลงแนะนำรอเล่น) */
+    private fun firstSuggestedOrderPosition(): Int? {
+        if (!radioActive) return null
+        return ((orderPosition + 1)..order.lastIndex).firstOrNull { order[it] in suggestedQueueIndices }
     }
 
     /** แทรก track ให้เล่นเป็นเพลงถัดไปทันที (ก่อนเพลงอื่นๆ ที่ต่อคิวไว้) — ถ้ายังไม่มีคิว ให้เริ่มเล่นทันทีแทน */
@@ -271,6 +329,11 @@ class PlayerController(
         var next = orderPosition + if (forward) 1 else -1
 
         if (next > order.lastIndex) {
+            if (radioActive && forward) {
+                // ปลายคิวใน Radio: ยังไม่ใช่จุดจบ — รอเพลงแนะนำที่กำลังเติม (หรือเติมใหม่) แล้วค่อยไปต่อ
+                advanceWhenRadioRefilled()
+                return
+            }
             if (repeatMode == RepeatMode.ALL) next = 0 else return
         } else if (next < 0) {
             if (repeatMode == RepeatMode.ALL) next = order.lastIndex else return
@@ -286,6 +349,90 @@ class PlayerController(
         shouldPlayWhenReady = playWhenReady
         playJob?.cancel()
         playJob = scope.launch { playCurrent(resumeAtMs) }
+        // ทุกการเปลี่ยนเพลง (next/previous/เลือกจากคิว/เริ่มใหม่) ผ่านที่นี่ — เช็คว่าคิวใกล้หมดจนต้องเติมล่วงหน้าไหม
+        requestRadioRefill()
+    }
+
+    // ---------------- Radio ----------------
+
+    /** จำนวนเพลงที่ยังรอเล่นต่อจากเพลงปัจจุบัน */
+    private fun upcomingCount(): Int = (order.lastIndex - orderPosition).coerceAtLeast(0)
+
+    /** จบ Radio (ถ้ามี) และทิ้งงาน/ผลที่ค้างของ session นั้นทั้งหมด — เรียกก่อนเปลี่ยนไปเล่นคิวชุดอื่นหรือหยุดเล่นเสมอ */
+    private fun endRadio() {
+        radioGeneration++
+        radioActive = false
+        refillJob?.cancel()
+        refillJob = null
+        tailAdvanceJob?.cancel()
+        tailAdvanceJob = null
+        suggestedQueueIndices.clear()
+        radioEngine.stop()
+    }
+
+    /**
+     * เติมเพลงแนะนำถ้าอยู่ใน Radio และเพลงรอเล่นน้อยกว่า [RadioConfig.lowWatermark] — ทำเบื้องหลัง ไม่ block การเล่น
+     * (ปลอดภัยที่จะเรียกซ้ำ: ถ้ามีงานเติมอยู่แล้วจะข้าม)
+     */
+    private fun requestRadioRefill() {
+        if (!radioActive || refillJob?.isActive == true) return
+        if (upcomingCount() >= radioConfig.lowWatermark) return
+
+        val generation = radioGeneration
+        refillJob = scope.launch {
+            val batch = try {
+                radioEngine.nextBatch(order.mapNotNull { queue.getOrNull(it) })
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList<Track>() // เติมไม่ได้ไม่ใช่เรื่องร้ายแรง (เพลงที่กำลังเล่นไม่กระทบ) — รอบหน้าลองใหม่
+            }
+            // คิวอาจถูกเปลี่ยน/ปิด Radio ระหว่างรอเครือข่าย → ทิ้งผลของ session เก่า
+            if (generation == radioGeneration && radioActive) appendSuggested(batch)
+        }
+    }
+
+    // TODO(debt): queue โตไม่จำกัดในเซสชัน Radio ที่ฟังยาวมาก (เก็บเพลงที่เล่นไปแล้วไว้ทั้งหมดเพื่อใช้กันซ้ำ)
+    //  ถ้าต้องจำกัด ควรตัดเพลงเก่าออกแล้วเก็บแค่ identity ไว้กันซ้ำใน RadioEngine แทน (ต้องปรับ index ของ order ด้วย)
+    // TODO(debt): เพลงแนะนำที่ resolve สตรีมไม่ได้ยังไม่ข้ามอัตโนมัติ (ขึ้น snackbar + ปุ่มลองใหม่เหมือนเพลงปกติ)
+    //  ถ้าอยากให้ Radio ลื่นกว่านี้ ให้ onPlayerError/playCurrent ล้มเหลวแล้ว next() เองเฉพาะเพลงที่อยู่ใน suggestedQueueIndices
+    private fun appendSuggested(tracks: List<Track>) {
+        if (tracks.isEmpty()) return
+        val firstNewIndex = queue.size
+        queue = queue + tracks
+        val newIndices = tracks.indices.map { firstNewIndex + it }
+        order = order + newIndices
+        suggestedQueueIndices.addAll(newIndices)
+        publishUpcoming()
+    }
+
+    /**
+     * ถึงปลายคิวขณะอยู่ใน Radio (เพลงจบเอง หรือผู้ใช้กดถัดไป) ตอนที่เพลงแนะนำยังเติมไม่ทัน:
+     * รองาน/เติมใหม่ให้เสร็จก่อนแล้วค่อยเล่นต่อ; ถ้าเติมไม่ได้เลย (เช่น ออฟไลน์) ค่อยกลับไปพฤติกรรมเดิม (วนซ้ำ/หยุด)
+     */
+    private fun advanceWhenRadioRefilled() {
+        if (tailAdvanceJob?.isActive == true) return
+        val generation = radioGeneration
+        // ระหว่างรอ ผู้ใช้อาจสั่งเล่นอย่างอื่นแทน (ย้อนเพลง/เลือกจากคิว/เริ่มเพลงใหม่) → playbackGeneration เปลี่ยน
+        // งานที่รออยู่ต้องเลิกเอง ไม่งั้นจะกระโดดข้ามเพลงต่อทั้งที่ผู้ใช้ไปเล่นอย่างอื่นแล้ว
+        val playGeneration = playbackGeneration
+        fun superseded() = generation != radioGeneration || !radioActive || playGeneration != playbackGeneration
+        tailAdvanceJob = scope.launch {
+            refillJob?.join()
+            if (superseded()) return@launch
+            if (upcomingCount() == 0) {
+                requestRadioRefill()
+                refillJob?.join()
+                if (superseded()) return@launch
+            }
+            when {
+                upcomingCount() > 0 -> moveOrderPosition(forward = true)
+                repeatMode == RepeatMode.ALL && order.isNotEmpty() -> {
+                    orderPosition = 0
+                    launchPlayCurrent()
+                }
+            }
+        }
     }
 
     fun toggleShuffle() {
@@ -305,6 +452,12 @@ class PlayerController(
         if (queue.isEmpty()) {
             order = emptyList()
             orderPosition = -1
+            return
+        }
+        if (radioActive && orderPosition in order.indices) {
+            // ใน Radio สุ่มเฉพาะเพลงที่ "ยังไม่ได้เล่น" — ถ้าสุ่มทั้งคิวเหมือนลิสต์ปกติ เพลงที่เพิ่งฟังไปจะวนกลับมาเป็นเพลงถัดไป
+            val playedAndCurrent = order.subList(0, orderPosition + 1)
+            order = playedAndCurrent + order.subList(orderPosition + 1, order.size).shuffled()
             return
         }
         val currentQueueIndex = order.getOrNull(orderPosition) ?: 0
@@ -414,7 +567,14 @@ class PlayerController(
         if (targetOrderPosition < orderPosition) {
             orderPosition -= 1
         }
+        // index ใน queue เลื่อนตามการลบ → ชุด "เพลงที่ Radio เติมเอง" ต้องเลื่อนตามด้วย ไม่งั้นจะชี้ผิดเพลง
+        val remappedSuggested = suggestedQueueIndices
+            .filter { it != removedQueueIndex }
+            .map { if (it > removedQueueIndex) it - 1 else it }
+        suggestedQueueIndices.clear()
+        suggestedQueueIndices.addAll(remappedSuggested)
         publishUpcoming()
+        requestRadioRefill() // ลบแล้วเพลงรอเล่นอาจต่ำกว่าเกณฑ์
     }
 
     /**
@@ -468,11 +628,14 @@ class PlayerController(
             queue.getOrNull(order[pos])?.let { UpcomingItem(pos, it) }
         }
         _state.value = _state.value.copy(
-            hasNext = order.isNotEmpty() && (orderPosition < order.lastIndex || repeatMode == RepeatMode.ALL),
+            // ใน Radio เพลงถัดไปมีเสมอ (เติมให้เรื่อยๆ) แม้เพลงปัจจุบันเป็นตัวสุดท้ายในคิวชั่วขณะ
+            hasNext = order.isNotEmpty() &&
+                (orderPosition < order.lastIndex || repeatMode == RepeatMode.ALL || radioActive),
             hasPrevious = order.isNotEmpty() && (orderPosition > 0 || repeatMode == RepeatMode.ALL),
             isShuffleEnabled = isShuffleEnabled,
             repeatMode = repeatMode,
-            upcoming = upcoming
+            upcoming = upcoming,
+            isRadioActive = radioActive
         )
     }
 
@@ -493,6 +656,7 @@ class PlayerController(
         shouldPlayWhenReady = false
         playJob?.cancel()
         sleepTimerJob?.cancel()
+        endRadio()
         controller?.apply {
             pause()
             stop()
@@ -552,6 +716,7 @@ class PlayerController(
         }
         playJob?.cancel()
         sleepTimerJob?.cancel()
+        endRadio()
         positionTickerJob?.cancel()
         positionTickerJob = null
         controller?.removeListener(listener)

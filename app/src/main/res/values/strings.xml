@@ -87,6 +87,9 @@
 
     <string name="settings_playback_title">การเล่นเพลง</string>
     <string name="settings_auto_advance">เล่นเพลงถัดไปในคิวต่อเองเมื่อจบเพลง</string>
+    <string name="settings_radio">เพลงถัดไปแนะนำจากเพลงที่เล่น (Radio)</string>
+    <string name="settings_radio_hint">เปิด: กดเล่นจากผลค้นหาแล้วเพลงต่อไปจะแนะนำตามเพลงนั้น ไม่ซ้ำกับที่เล่นไปแล้ว — ปิด: ใช้ผลค้นหาทั้งลิสต์เป็นคิวแบบเดิม</string>
+    <string name="player_up_next_radio">เพลงแนะนำถัดไป</string>
 
     <string name="settings_cache_title">แคชเพลง</string>
     <string name="settings_cache_count">แคชลิงก์เสียงไว้ %1$d รายการ</string>

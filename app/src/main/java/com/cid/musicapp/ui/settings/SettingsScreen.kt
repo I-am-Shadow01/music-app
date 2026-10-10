@@ -161,6 +161,15 @@ fun SettingsScreen(
                 checked = uiState.autoAdvanceEnabled,
                 onCheckedChange = { viewModel.setAutoAdvance(it) }
             )
+            SettingsSwitchRow(
+                label = stringResource(R.string.settings_radio),
+                checked = uiState.radioEnabled,
+                onCheckedChange = { viewModel.setRadioEnabled(it) }
+            )
+            Text(
+                stringResource(R.string.settings_radio_hint),
+                style = MaterialTheme.typography.labelSmall
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))

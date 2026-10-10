@@ -108,4 +108,47 @@ object AppConstants {
 
     // --- StateFlow ที่ได้จาก stateIn() จะหยุดเก็บค่าหลังไม่มีผู้ฟังนานเท่านี้ (ค่า default ของ WhileSubscribed) ---
     const val STATE_FLOW_STOP_TIMEOUT_MILLIS = 5000L
+
+    // --- Radio: เพลงถัดไปอัตโนมัติที่แนะนำจากเพลงที่กำลังฟัง (ไม่อิงลำดับผลค้นหา) ---
+    const val DEFAULT_RADIO_ENABLED = true
+    // เหลือเพลงรอเล่นในคิวน้อยกว่านี้ → ไปดึงเพลงแนะนำมาเติมล่วงหน้า (กันเงียบตอนเพลงจบ)
+    const val RADIO_LOW_WATERMARK = 5
+    // จำนวนเพลง (หลังกรองแล้ว) ที่เติมต่อหนึ่งรอบ
+    const val RADIO_BATCH_SIZE = 20
+    // เปิดหน้า YouTube Mix ได้มากสุดกี่หน้าต่อการเติมหนึ่งรอบ (กันวนยิง request ถ้าทุกเพลงโดนกรองทิ้ง)
+    const val RADIO_MAX_PAGES_PER_FILL = 3
+    // เติมได้ 0 เพลง (เน็ตหลุด/หมดแหล่ง) → รอเท่านี้ก่อนลองเติมอีก กัน request ถี่ๆ ตอนออฟไลน์
+    const val RADIO_RETRY_BACKOFF_MILLIS = 15_000L
+    // เพลงที่สั้น/ยาวกว่านี้ไม่ถือเป็นเพลงแนะนำ (ตัดคลิปสั้น, mix/อัลบั้มรวม/สตรีมยาว)
+    const val RADIO_MIN_DURATION_SECONDS = 60
+    const val RADIO_MAX_DURATION_SECONDS = 12 * 60
+    // กันศิลปินเดิมซ้ำติดๆ กัน: ในหน้าต่าง N เพลงล่าสุด (รวมที่รอเล่น) ศิลปินเดียวกันได้ไม่เกิน M เพลง
+    const val RADIO_ARTIST_WINDOW = 6
+    const val RADIO_MAX_SAME_ARTIST_IN_WINDOW = 2
+    // ชื่อเพลง (หลังตัดคำประกอบ) สั้นกว่านี้ไม่เอามาเทียบซ้ำเลย เสี่ยงชนกันมั่ว (เช่น "a")
+    const val RADIO_MIN_SONG_KEY_LENGTH = 2
+    // ชื่อเพลงยาวเท่านี้ขึ้นไปถือว่าเฉพาะพอ → ซ้ำได้แม้ศิลปิน/ช่องต่างกัน (เช่น cover); ถ้าสั้นกว่าต้องศิลปินตรงกันด้วย
+    const val RADIO_ARTIST_FREE_SONG_KEY_LENGTH = 12
+
+    // คำประกอบชื่อคลิปที่ไม่ใช่ชื่อเพลง — ตัดทิ้งก่อนเทียบเพลงซ้ำ (ตัวพิมพ์เล็ก, เทียบทีละคำเต็ม)
+    val RADIO_NOISE_WORDS = listOf(
+        "official", "video", "mv", "audio", "lyrics", "lyric", "hd", "hq", "4k", "visualizer",
+        "clip", "performance", "prod", "เนื้อเพลง", "เอ็มวี", "มิวสิกวิดีโอ"
+    )
+    // คำบอกเวอร์ชัน — ตัดทิ้งเฉพาะที่อยู่ในวงเล็บ/วงเล็บเหลี่ยม เช่น "(Live)", "[Remix]"
+    // (ไม่ใส่คำสั้นๆ ที่เป็นคำทั่วไปอย่าง "up" เพราะจะลบวงเล็บที่เป็นส่วนของชื่อเพลงจริง เช่น "(Wake Up)" —
+    // "(Sped Up)" ยังถูกจับได้จากคำว่า "sped")
+    val RADIO_VERSION_WORDS = listOf(
+        "live", "remix", "cover", "acoustic", "version", "ver", "remastered", "remaster",
+        "slowed", "reverb", "sped", "instrumental"
+    )
+    // คำในชื่อศิลปิน/ช่องที่ไม่ช่วยระบุตัวศิลปิน (ไม่ใช้เทียบว่าเป็นศิลปินเดียวกัน)
+    val RADIO_ARTIST_NOISE_WORDS = listOf(
+        "topic", "vevo", "official", "channel", "music", "records", "entertainment", "label", "labels", "tv"
+    )
+    // ชื่อคลิปที่มีวลีเหล่านี้ไม่เอามาเป็นเพลงแนะนำ (เทียบเป็นวลีเต็ม ไม่ใช่แค่เป็นส่วนของคำ)
+    val RADIO_REJECT_TITLE_PHRASES = listOf(
+        "full album", "playlist", "non stop", "nonstop", "compilation", "reaction", "tutorial",
+        "interview", "trailer", "livestream", "live stream", "podcast", "karaoke", "nightcore", "8d audio"
+    )
 }
