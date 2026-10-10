@@ -367,7 +367,7 @@ fun PlayerScreen(viewModel: PlayerViewModel, onCollapse: () -> Unit) {
             if (state.upcoming.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    stringResource(R.string.player_up_next),
+                    stringResource(if (state.isRadioActive) R.string.player_up_next_radio else R.string.player_up_next),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.fillMaxWidth()
                 )

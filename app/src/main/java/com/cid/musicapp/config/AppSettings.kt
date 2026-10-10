@@ -37,6 +37,7 @@ class AppSettings(context: Context) {
         private val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color_enabled")
         private val KEY_VIDEO_HEIGHT_PX = intPreferencesKey("video_height_px")
         private val KEY_FAVORITE_TRACKS = stringPreferencesKey("favorite_tracks_json")
+        private val KEY_RADIO_ENABLED = booleanPreferencesKey("radio_enabled")
     }
 
     val themeModeFlow: Flow<ThemeMode> = dataStore.data.map { prefs ->
@@ -57,6 +58,14 @@ class AppSettings(context: Context) {
     /** เพลงจบแล้วเล่นเพลงถัดไปในคิวต่อเองไหม (ปิดได้ถ้าอยากฟังทีละเพลงแล้วหยุด) */
     val autoAdvanceFlow: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[KEY_AUTO_ADVANCE] ?: AppConstants.DEFAULT_AUTO_ADVANCE_ENABLED
+    }
+
+    /**
+     * กดเล่นเพลงจากผลค้นหาแล้วให้เพลงถัดไปมาจาก Radio (แนะนำต่อเนื่องจากเพลงที่เลือก ไม่ซ้ำ) ไหม
+     * ปิด = กลับไปแบบเดิม: ผลค้นหาทั้งลิสต์กลายเป็นคิว
+     */
+    val radioEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_RADIO_ENABLED] ?: AppConstants.DEFAULT_RADIO_ENABLED
     }
 
     /** เช็คอัปเดตอัตโนมัติตอนเปิดแอปไหม (ปิดได้ถ้าอยากเช็คเองจากหน้าตั้งค่าเท่านั้น) */
@@ -169,6 +178,10 @@ class AppSettings(context: Context) {
 
     suspend fun setAutoAdvance(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_AUTO_ADVANCE] = enabled }
+    }
+
+    suspend fun setRadioEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_RADIO_ENABLED] = enabled }
     }
 
     suspend fun setAutoCheckUpdates(enabled: Boolean) {
