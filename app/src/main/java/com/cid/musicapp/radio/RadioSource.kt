@@ -22,5 +22,8 @@ interface RadioSource {
     suspend fun related(track: Track): List<Track>
 
     /** เพลงอื่นของศิลปินเดียวกับ [track] — แหล่งสำรองสุดท้ายเมื่อสองแหล่งแรกไม่ได้ผล */
-    suspend fun byArtist(track: Track): List<Track>
+    suspend fun byArtist(track: Track): List<Track> = artistTracks(track.artist)
+
+    /** เพลงของศิลปินชื่อ [artistName] (ผลอาจปนศิลปินอื่น — ผู้เรียกต้องกรองเอง) ใช้แทรกเพลงจากศิลปินที่ผู้ใช้ฟังบ่อย */
+    suspend fun artistTracks(artistName: String): List<Track>
 }

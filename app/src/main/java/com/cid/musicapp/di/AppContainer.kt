@@ -1,16 +1,26 @@
 package com.cid.musicapp.di
 
 import android.content.Context
+import android.os.SystemClock
 import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.MusicRepository
 import com.cid.musicapp.data.repository.YoutubeRadioSource
+import com.cid.musicapp.history.FileHistoryStore
+import com.cid.musicapp.history.ListenRecorder
+import com.cid.musicapp.history.ListeningHistory
+import com.cid.musicapp.history.TasteProvider
 import com.cid.musicapp.player.PlayerController
 import com.cid.musicapp.radio.RadioConfig
 import com.cid.musicapp.radio.RadioEngine
+import com.cid.musicapp.radio.TrackIdentityFactory
 import com.cid.musicapp.update.ApkInstaller
 import com.cid.musicapp.update.AppUpdateChecker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import okhttp3.OkHttpClient
+import java.io.File
 import java.time.Duration
 
 class AppContainer(context: Context) {
@@ -26,14 +36,38 @@ class AppContainer(context: Context) {
         .readTimeout(Duration.ofSeconds(AppConstants.NETWORK_READ_TIMEOUT_SECONDS))
         .build()
 
+    // scope ของงานเบื้องหลังที่อยู่ยาวตลอดอายุแอป (เขียนไฟล์ประวัติการฟัง) — ไม่ผูกกับ ViewModel/หน้าจอใด
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     val appSettings = AppSettings(context)
     val musicRepository = MusicRepository(appSettings)
 
-    // Radio: ค่าปรับแต่งชุดเดียวใช้ร่วมกันระหว่าง engine (กรอง/ดึงเพลง) กับ controller (เกณฑ์เติมคิวล่วงหน้า)
-    private val radioConfig = RadioConfig()
-    private val radioEngine = RadioEngine(YoutubeRadioSource(musicRepository), radioConfig)
+    // ประวัติการฟัง: เก็บเป็นไฟล์ในที่เก็บส่วนตัวของแอป ไม่ส่งออกนอกเครื่อง
+    val listeningHistory = ListeningHistory(
+        store = FileHistoryStore(File(context.applicationContext.filesDir, AppConstants.HISTORY_FILE_NAME)),
+        scope = appScope
+    )
 
-    val playerController = PlayerController(context, musicRepository, appSettings, radioEngine, radioConfig)
+    // Radio + รสนิยม: ใช้ identity factory/ค่าปรับแต่งชุดเดียวกันทั้งตัวคัดเพลง ตัวคำนวณรสนิยม และตัวควบคุมคิว
+    private val radioConfig = RadioConfig()
+    private val trackIdentities = TrackIdentityFactory(radioConfig)
+    val tasteProvider = TasteProvider(listeningHistory, appSettings, trackIdentities)
+    private val radioEngine = RadioEngine(
+        source = YoutubeRadioSource(musicRepository),
+        config = radioConfig,
+        identities = trackIdentities,
+        tasteProvider = { tasteProvider.current() }
+    )
+
+    private val listenRecorder = ListenRecorder(
+        elapsedMillis = { SystemClock.elapsedRealtime() },
+        wallMillis = { System.currentTimeMillis() }
+    )
+
+    val playerController = PlayerController(
+        context, musicRepository, appSettings, radioEngine, radioConfig,
+        listenRecorder, listeningHistory, tasteProvider
+    )
     val appUpdateChecker = AppUpdateChecker(okHttpClient)
     val apkInstaller = ApkInstaller(context.applicationContext, okHttpClient)
 }
