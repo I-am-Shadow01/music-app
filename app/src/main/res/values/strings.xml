@@ -14,6 +14,8 @@
     <string name="search_add_to_queue">เพิ่มเข้าคิว</string>
     <string name="search_added_to_queue">เพิ่มเข้าคิวแล้ว</string>
     <string name="search_plays_next">จะเล่นต่อจากเพลงนี้</string>
+    <string name="search_play_for_you">เล่นเพลงที่คุณน่าจะชอบ</string>
+    <string name="search_top_artists_title">ศิลปินที่คุณฟังบ่อย</string>
     <string name="search_no_results">ไม่พบผลลัพธ์สำหรับคำนี้</string>
     <string name="search_favorite_add">กดใจเพลงนี้</string>
     <string name="search_favorite_remove">เอาออกจากเพลงโปรด</string>
@@ -90,6 +92,14 @@
     <string name="settings_radio">เพลงถัดไปแนะนำจากเพลงที่เล่น (Radio)</string>
     <string name="settings_radio_hint">เปิด: กดเล่นจากผลค้นหาแล้วเพลงต่อไปจะแนะนำตามเพลงนั้น ไม่ซ้ำกับที่เล่นไปแล้ว — ปิด: ใช้ผลค้นหาทั้งลิสต์เป็นคิวแบบเดิม</string>
     <string name="player_up_next_radio">เพลงแนะนำถัดไป</string>
+
+    <string name="settings_history_title">ประวัติการฟัง</string>
+    <string name="settings_history_toggle">จดประวัติการฟังเพื่อแนะนำเพลง</string>
+    <string name="settings_history_hint">เก็บไว้ในเครื่องนี้เท่านั้น ไม่ส่งออกไปไหน — ใช้เลือกเพลงแนะนำจากศิลปินและเพลงที่คุณฟังบ่อย ปิดแล้วจะไม่จดเพิ่มและไม่นำที่จดไว้มาคำนวณ</string>
+    <string name="settings_history_count">จดประวัติไว้ %1$d รายการ</string>
+    <string name="settings_clear_history_button">ล้างประวัติการฟัง</string>
+    <string name="settings_clear_history_confirm_title">ล้างประวัติการฟัง?</string>
+    <string name="settings_clear_history_confirm_body">ประวัติ %1$d รายการจะถูกลบ และระบบแนะนำจะเริ่มเรียนรู้รสนิยมใหม่ตั้งแต่ต้น แก้คืนไม่ได้</string>
 
     <string name="settings_cache_title">แคชเพลง</string>
     <string name="settings_cache_count">แคชลิงก์เสียงไว้ %1$d รายการ</string>

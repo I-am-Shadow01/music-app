@@ -153,7 +153,9 @@ fun AppNavHost(container: AppContainer) {
                 composable(ROUTE_SEARCH) {
                     val viewModel: SearchViewModel = viewModel(
                         factory = viewModelFactory {
-                            initializer { SearchViewModel(container.musicRepository, container.appSettings) }
+                            initializer {
+                                SearchViewModel(container.musicRepository, container.appSettings, container.tasteProvider)
+                            }
                         }
                     )
                     val addedToQueueMessage = stringResource(R.string.search_added_to_queue)
@@ -173,6 +175,10 @@ fun AppNavHost(container: AppContainer) {
                         onPlayNext = { track ->
                             container.playerController.playNext(track)
                             coroutineScope.launch { snackbarHostState.showSnackbar(playsNextMessage) }
+                        },
+                        onPlayForYou = {
+                            container.playerController.playForYou()
+                            openPlayer()
                         }
                     )
                 }
@@ -214,7 +220,7 @@ fun AppNavHost(container: AppContainer) {
                     val viewModel: SettingsViewModel = viewModel(
                         factory = viewModelFactory {
                             initializer {
-                                SettingsViewModel(container.appSettings, container.musicRepository)
+                                SettingsViewModel(container.appSettings, container.musicRepository, container.listeningHistory)
                             }
                         }
                     )

@@ -16,8 +16,10 @@ class RadioEngineTest {
         private val mixPages: List<List<Track>> = emptyList(),
         private val relatedTracks: List<Track> = emptyList(),
         private val artistTracks: List<Track> = emptyList(),
-        private val mixFails: Boolean = false
+        private val mixFails: Boolean = false,
+        private val namedArtistResults: Map<String, List<Track>> = emptyMap()
     ) : RadioSource {
+        val namedArtistCalls = ArrayList<String>()
         var mixCalls = 0
         var relatedCalls = 0
         var artistCalls = 0
@@ -31,6 +33,7 @@ class RadioEngineTest {
         }
         override suspend fun related(track: Track): List<Track> { relatedCalls++; return relatedTracks }
         override suspend fun byArtist(track: Track): List<Track> { artistCalls++; return artistTracks }
+        override suspend fun artistTracks(artistName: String): List<Track> { namedArtistCalls.add(artistName); return namedArtistResults[artistName].orEmpty() }
     }
 
     private val config = RadioConfig(batchSize = 3, maxPagesPerFill = 2, retryBackoffMillis = 1_000)

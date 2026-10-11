@@ -38,6 +38,7 @@ class AppSettings(context: Context) {
         private val KEY_VIDEO_HEIGHT_PX = intPreferencesKey("video_height_px")
         private val KEY_FAVORITE_TRACKS = stringPreferencesKey("favorite_tracks_json")
         private val KEY_RADIO_ENABLED = booleanPreferencesKey("radio_enabled")
+        private val KEY_HISTORY_ENABLED = booleanPreferencesKey("history_enabled")
     }
 
     val themeModeFlow: Flow<ThemeMode> = dataStore.data.map { prefs ->
@@ -66,6 +67,14 @@ class AppSettings(context: Context) {
      */
     val radioEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
         prefs[KEY_RADIO_ENABLED] ?: AppConstants.DEFAULT_RADIO_ENABLED
+    }
+
+    /**
+     * จดประวัติการฟังและใช้เป็นรสนิยมแนะนำเพลงไหม — ปิดแล้วไม่บันทึกเพิ่มและไม่ใช้ข้อมูลเดิมแนะนำ
+     * (ข้อมูลเดิมไม่ถูกลบเอง ต้องกด "ล้างประวัติการฟัง")
+     */
+    val historyEnabledFlow: Flow<Boolean> = dataStore.data.map { prefs ->
+        prefs[KEY_HISTORY_ENABLED] ?: AppConstants.DEFAULT_HISTORY_ENABLED
     }
 
     /** เช็คอัปเดตอัตโนมัติตอนเปิดแอปไหม (ปิดได้ถ้าอยากเช็คเองจากหน้าตั้งค่าเท่านั้น) */
@@ -182,6 +191,10 @@ class AppSettings(context: Context) {
 
     suspend fun setRadioEnabled(enabled: Boolean) {
         dataStore.edit { prefs -> prefs[KEY_RADIO_ENABLED] = enabled }
+    }
+
+    suspend fun setHistoryEnabled(enabled: Boolean) {
+        dataStore.edit { prefs -> prefs[KEY_HISTORY_ENABLED] = enabled }
     }
 
     suspend fun setAutoCheckUpdates(enabled: Boolean) {

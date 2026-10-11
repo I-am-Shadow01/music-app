@@ -14,6 +14,9 @@ import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.MusicRepository
 import com.cid.musicapp.data.repository.Track
+import com.cid.musicapp.history.ListenRecorder
+import com.cid.musicapp.history.ListeningHistory
+import com.cid.musicapp.history.TasteProvider
 import com.cid.musicapp.radio.RadioConfig
 import com.cid.musicapp.radio.RadioEngine
 import com.google.common.util.concurrent.ListenableFuture
@@ -80,7 +83,10 @@ class PlayerController(
     private val repository: MusicRepository,
     private val appSettings: AppSettings,
     private val radioEngine: RadioEngine,
-    private val radioConfig: RadioConfig
+    private val radioConfig: RadioConfig,
+    private val listenRecorder: ListenRecorder,
+    private val history: ListeningHistory,
+    private val tasteProvider: TasteProvider
 ) {
 
     private var controller: MediaController? = null
@@ -128,6 +134,13 @@ class PlayerController(
     // ไม่งั้นเพลงแนะนำของ session เก่าจะไปต่อท้ายคิวใหม่ (เหตุผลเดียวกับ playbackGeneration ด้านบน)
     private var radioGeneration = 0
 
+    // เพลงแนะนำที่เล่นไม่ได้ติดกันมาแล้วกี่เพลง — ข้ามให้เองได้ไม่เกิน MAX_CONSECUTIVE_AUTO_SKIPS แล้วค่อยแจ้งผู้ใช้
+    // (กันวนข้ามรัวไม่หยุดตอนออฟไลน์/โดนบล็อกทั้งหมด) รีเซ็ตเมื่อมีเพลงเล่นได้จริง
+    private var consecutiveAutoSkips = 0
+
+    // job โหลดลิงก์เพลงถัดไปรอไว้ — ยกเลิกทิ้งทุกครั้งที่ "เพลงถัดไป" เปลี่ยน
+    private var prefetchJob: Job? = null
+
     // job ของตัวนับตำแหน่งเพลง (startPositionTicker) — เก็บไว้ให้ release() ยกเลิกด้วย
     // (เดิมปล่อย loop วิ่งตลอดอายุ scope แม้ release() ไปแล้ว controller เป็น null ก็ยัง wake ทุก 500ms)
     private var positionTickerJob: Job? = null
@@ -140,7 +153,15 @@ class PlayerController(
             syncStateFrom(player)
         }
 
+        // เล่น/หยุดชั่วคราวเปลี่ยน → ตัวนับเวลาฟังจริงของประวัติการฟัง (ไม่นับช่วงหยุด)
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            listenRecorder.onPlayingChanged(isPlaying)
+            if (isPlaying) consecutiveAutoSkips = 0
+        }
+
         override fun onPlaybackStateChanged(playbackState: Int) {
+            // เพลงจบเองตามธรรมชาติ = ฟังจบ → บันทึกทันที (ก่อนตัดสินว่าจะเล่นต่อหรือไม่ — ฟังจบแล้วก็นับเสมอ)
+            if (playbackState == Player.STATE_ENDED) recordFinishedListen()
             if (playbackState == Player.STATE_ENDED && !_state.value.isResolving) {
                 val generation = playbackGeneration
                 scope.launch {
@@ -154,6 +175,8 @@ class PlayerController(
         }
 
         override fun onPlayerError(error: PlaybackException) {
+            // เพลงที่ระบบแนะนำเองเล่นกลางทางไม่ได้ (เช่นลิงก์หมดอายุ/โดนบล็อก) → ข้ามไปเพลงถัดไปเงียบๆ
+            if (skipFailedSuggestion(playbackGeneration)) return
             _state.value = _state.value.copy(isResolving = false,
                 errorMessage = context.getString(com.cid.musicapp.R.string.playback_error, error.errorCodeName))
         }
@@ -243,6 +266,21 @@ class PlayerController(
         }
     }
 
+    /**
+     * "เล่นเพลงที่คุณน่าจะชอบ": เลือกเพลงตั้งต้นแบบสุ่มจากเพลงที่ชอบที่สุด (ฟังจบบ่อย/กดใจ ที่ไม่ได้เพิ่งฟังไป)
+     * แล้วเริ่ม Radio จากเพลงนั้น — ศิลปินที่ฟังบ่อยจะถูกแทรกเข้ามาเองระหว่างทาง ไม่มีข้อมูลรสนิยมพอ = ไม่ทำอะไร
+     * (UI ซ่อนปุ่มนี้อยู่แล้วเมื่อไม่มีข้อมูล)
+     */
+    fun playForYou() {
+        scope.launch {
+            val seed = tasteProvider.current()
+                ?.seedCandidates(AppConstants.TASTE_SEED_POOL)
+                ?.randomOrNull()
+                ?: return@launch
+            playRadio(seed)
+        }
+    }
+
     /** เริ่ม Radio จาก [seed]: คิวมีแค่เพลงนี้ ที่เหลือ RadioEngine เติมให้เรื่อยๆ ตามที่ฟัง */
     fun playRadio(seed: Track) {
         endRadio()
@@ -269,6 +307,7 @@ class PlayerController(
         val insertAt = firstSuggestedOrderPosition() ?: order.size
         order = order.toMutableList().apply { add(insertAt, newQueueIndex) }
         publishUpcoming()
+        schedulePrefetchNext()
     }
 
     /** ตำแหน่งใน play-order ของเพลงแนะนำตัวแรกที่ยังไม่ได้เล่น (null = ไม่อยู่ใน Radio หรือยังไม่มีเพลงแนะนำรอเล่น) */
@@ -288,6 +327,7 @@ class PlayerController(
         val insertAt = (orderPosition + 1).coerceAtMost(order.size)
         order = order.toMutableList().apply { add(insertAt, newQueueIndex) }
         publishUpcoming()
+        schedulePrefetchNext()
     }
 
     /** กดเพลงใน "ถัดไป" โดยตรง ข้ามไปเล่นตำแหน่งนั้นใน play-order ทันที */
@@ -318,9 +358,63 @@ class PlayerController(
                 seekTo(0)
                 play()
             }
+            // รอบวนซ้ำถือเป็นการฟังใหม่อีกครั้ง (รอบก่อนบันทึกไปแล้วตอนเพลงจบ)
+            currentTrack()?.let { listenRecorder.begin(it, isPlaying = true) }
             return
         }
         moveOrderPosition(forward = true)
+    }
+
+    private fun currentTrack(): Track? = order.getOrNull(orderPosition)?.let { queue.getOrNull(it) }
+
+    // ---------------- ประวัติการฟัง ----------------
+
+    /** ปิดการฟังเพลงปัจจุบันแล้วบันทึกลงประวัติ (ถ้าฟังนานพอ และผู้ใช้ไม่ได้ปิดการจดประวัติไว้) */
+    private fun recordFinishedListen() {
+        val record = listenRecorder.finish() ?: return
+        scope.launch { if (appSettings.historyEnabledFlow.first()) history.record(record) }
+    }
+
+    /**
+     * เล่นเพลงที่ระบบแนะนำเองไม่ได้ → ข้ามไปเพลงถัดไปให้เอง (คืน true = จัดการแล้ว ผู้เรียกไม่ต้องแจ้ง error)
+     * ข้ามเฉพาะเพลงที่ Radio เติมเอง และไม่เกิน [AppConstants.MAX_CONSECUTIVE_AUTO_SKIPS] เพลงติดกัน
+     * ถ้าระหว่างนั้นผู้ใช้สั่งเล่นอย่างอื่นไปแล้ว ([generation] ไม่ตรง) ก็ไม่ทำอะไร
+     */
+    private fun skipFailedSuggestion(generation: Int): Boolean {
+        val queueIndex = order.getOrNull(orderPosition) ?: return false
+        if (generation != playbackGeneration || !radioActive || queueIndex !in suggestedQueueIndices) return false
+        if (consecutiveAutoSkips >= AppConstants.MAX_CONSECUTIVE_AUTO_SKIPS) return false
+
+        consecutiveAutoSkips++
+        _state.value = _state.value.copy(isResolving = false)
+        // launch แยก: ผู้เรียกอาจเป็น playJob เอง — moveOrderPosition จะ cancel playJob ซึ่งไม่ควร cancel ตัวเองกลางทาง
+        scope.launch { if (generation == playbackGeneration) moveOrderPosition(forward = true) }
+        return true
+    }
+
+    /**
+     * โหลดลิงก์เพลงถัดไปรอไว้ในแคช (best effort) — พอถึงเพลงนั้นจะเล่นได้ทันทีแทนที่จะเงียบรอ resolve จากเครือข่าย
+     * รอสักครู่หลังเพลงปัจจุบันเริ่มก่อน ไม่แย่ง bandwidth ตอนกำลังบัฟเฟอร์; ล้มเหลวก็แค่ไปโหลดตอนถึงเพลงนั้นตามปกติ
+     */
+    private fun schedulePrefetchNext() {
+        prefetchJob?.cancel()
+        prefetchJob = null
+        if (!AppConstants.PREFETCH_NEXT_ENABLED) return
+        val next = order.getOrNull(orderPosition + 1)?.let { queue.getOrNull(it) } ?: return
+        val mode = playbackMode
+        prefetchJob = scope.launch {
+            delay(AppConstants.PREFETCH_DELAY_MILLIS)
+            try {
+                when (mode) {
+                    PlaybackMode.AUDIO -> repository.resolveAudioStreamUrl(next)
+                    PlaybackMode.VIDEO -> repository.resolveVideoStreamUrl(next)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // ไม่เป็นไร — ตอนถึงเพลงนั้นจริงจะ resolve ใหม่และแจ้ง error ตามปกติถ้ายังเล่นไม่ได้
+            }
+        }
     }
 
     private fun moveOrderPosition(forward: Boolean) {
@@ -345,6 +439,9 @@ class PlayerController(
 
     /** cancel job ของ playCurrent() ตัวก่อนหน้าเสมอก่อนเริ่มตัวใหม่ — ดูคอมเมนต์ที่ field playJob ด้านบน */
     private fun launchPlayCurrent(resumeAtMs: Long = 0L, playWhenReady: Boolean = true) {
+        // เปลี่ยนไปเพลงอื่น = จบการฟังเพลงเดิม (ฟังไปเท่าไหร่ก็บันทึกเท่านั้น — ข้ามเร็วจึงนับเป็น "ข้าม")
+        // แต่ถ้าเป็นการเล่นเพลงเดิมต่อ (สลับโหมดเสียง/วิดีโอ, ลองใหม่) ไม่ถือเป็นการเปลี่ยนเพลง ปล่อยตัวนับเดินต่อ
+        if (resumeAtMs == 0L) recordFinishedListen()
         playbackGeneration++
         shouldPlayWhenReady = playWhenReady
         playJob?.cancel()
@@ -367,6 +464,7 @@ class PlayerController(
         tailAdvanceJob?.cancel()
         tailAdvanceJob = null
         suggestedQueueIndices.clear()
+        consecutiveAutoSkips = 0
         radioEngine.stop()
     }
 
@@ -394,8 +492,6 @@ class PlayerController(
 
     // TODO(debt): queue โตไม่จำกัดในเซสชัน Radio ที่ฟังยาวมาก (เก็บเพลงที่เล่นไปแล้วไว้ทั้งหมดเพื่อใช้กันซ้ำ)
     //  ถ้าต้องจำกัด ควรตัดเพลงเก่าออกแล้วเก็บแค่ identity ไว้กันซ้ำใน RadioEngine แทน (ต้องปรับ index ของ order ด้วย)
-    // TODO(debt): เพลงแนะนำที่ resolve สตรีมไม่ได้ยังไม่ข้ามอัตโนมัติ (ขึ้น snackbar + ปุ่มลองใหม่เหมือนเพลงปกติ)
-    //  ถ้าอยากให้ Radio ลื่นกว่านี้ ให้ onPlayerError/playCurrent ล้มเหลวแล้ว next() เองเฉพาะเพลงที่อยู่ใน suggestedQueueIndices
     private fun appendSuggested(tracks: List<Track>) {
         if (tracks.isEmpty()) return
         val firstNewIndex = queue.size
@@ -404,6 +500,7 @@ class PlayerController(
         order = order + newIndices
         suggestedQueueIndices.addAll(newIndices)
         publishUpcoming()
+        schedulePrefetchNext()
     }
 
     /**
@@ -446,6 +543,7 @@ class PlayerController(
             orderPosition = currentQueueIndex?.let { order.indexOf(it) } ?: 0
         }
         publishUpcoming()
+        schedulePrefetchNext()
     }
 
     private fun shuffleOrderKeepingCurrent() {
@@ -479,6 +577,7 @@ class PlayerController(
     private suspend fun playCurrent(resumeAtMs: Long = 0L) {
         val queueIndex = order.getOrNull(orderPosition) ?: return
         val track = queue.getOrNull(queueIndex) ?: return
+        val generation = playbackGeneration
 
         _state.value = _state.value.copy(
             isResolving = true,
@@ -513,7 +612,9 @@ class PlayerController(
                 playWhenReady = shouldPlayWhenReady
             }
 
+            if (resumeAtMs == 0L) listenRecorder.begin(track, isPlaying = false) // เริ่มจับเวลาฟังจริง (เริ่มนับเมื่อเล่นจริง)
             _state.value = _state.value.copy(isResolving = false, currentTrackId = track.id)
+            schedulePrefetchNext()
         } catch (e: CancellationException) {
             // job นี้โดน cancel เพราะมีคำสั่งเล่นใหม่กว่าเข้ามาแทน (ดู launchPlayCurrent) — ไม่ใช่ error
             // จริง ต้อง rethrow ต่อเสมอ ไม่งั้น catch(Exception) ด้านล่างจะจับ CancellationException
@@ -521,6 +622,8 @@ class PlayerController(
             // ทั้งที่จริงๆ แค่ผู้ใช้กด next/previous เร็วเกินไปเฉยๆ
             throw e
         } catch (e: Exception) {
+            // เพลงที่ระบบแนะนำเอง resolve ไม่ได้ → ข้ามไปเพลงถัดไปเงียบๆ (เพลงที่ผู้ใช้เลือกเองยังแจ้ง error + ปุ่มลองใหม่ตามเดิม)
+            if (skipFailedSuggestion(generation)) return
             val modeLabel = if (playbackMode == PlaybackMode.VIDEO) "วิดีโอ" else "เสียง"
             _state.value = _state.value.copy(
                 isResolving = false,
@@ -575,6 +678,7 @@ class PlayerController(
         suggestedQueueIndices.addAll(remappedSuggested)
         publishUpcoming()
         requestRadioRefill() // ลบแล้วเพลงรอเล่นอาจต่ำกว่าเกณฑ์
+        schedulePrefetchNext()
     }
 
     /**
@@ -588,6 +692,7 @@ class PlayerController(
 
         order = order.toMutableList().apply { add(toOrderPosition, removeAt(fromOrderPosition)) }
         publishUpcoming()
+        schedulePrefetchNext()
     }
 
     /**
@@ -652,9 +757,12 @@ class PlayerController(
 
     /** หยุดเล่นเพลง ล้างคิวทั้งหมด และซ่อน mini player bar (กดปุ่มปิดที่ mini player) */
     fun stopAndDismiss() {
+        recordFinishedListen()
+        history.flush() // หยุดทั้งหมดแล้ว (ผู้ใช้อาจปิดแอปต่อ) — บันทึกลงไฟล์ทันที ไม่รอ debounce
         playbackGeneration++
         shouldPlayWhenReady = false
         playJob?.cancel()
+        prefetchJob?.cancel()
         sleepTimerJob?.cancel()
         endRadio()
         controller?.apply {
@@ -708,6 +816,9 @@ class PlayerController(
     }
 
     fun release() {
+        recordFinishedListen()
+        history.flush()
+        prefetchJob?.cancel()
         playbackGeneration++
         connectionFuture?.let { MediaController.releaseFuture(it) }
         connectionFuture = null

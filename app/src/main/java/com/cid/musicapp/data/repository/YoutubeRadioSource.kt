@@ -56,10 +56,10 @@ class YoutubeRadioSource(private val repository: MusicRepository) : RadioSource 
         extractor.relatedItems?.items.orEmpty().toTracks()
     }
 
-    /** ค้นหาด้วยชื่อศิลปิน/ช่องของเพลงนี้ — แหล่งสำรองสุดท้าย */
-    override suspend fun byArtist(track: Track): List<Track> = withContext(Dispatchers.IO) {
+    /** ค้นหาด้วยชื่อศิลปิน/ช่อง — ใช้ทั้งเป็นแหล่งสำรองสุดท้าย และแทรกเพลงจากศิลปินที่ผู้ใช้ฟังบ่อย */
+    override suspend fun artistTracks(artistName: String): List<Track> = withContext(Dispatchers.IO) {
         repository.ensureInitialized()
-        val extractor = youtube.getSearchExtractor(track.artist, emptyList(), "")
+        val extractor = youtube.getSearchExtractor(artistName, emptyList(), "")
         extractor.fetchPage()
         currentCoroutineContext().ensureActive()
         extractor.initialPage.items.toTracks()

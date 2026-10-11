@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.DeveloperMode
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.PlayCircleOutline
@@ -54,6 +55,7 @@ fun SettingsScreen(
 
     var showResetConfirm by remember { mutableStateOf(false) }
     var showClearCacheConfirm by remember { mutableStateOf(false) }
+    var showClearHistoryConfirm by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -170,6 +172,53 @@ fun SettingsScreen(
                 stringResource(R.string.settings_radio_hint),
                 style = MaterialTheme.typography.labelSmall
             )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        SettingsSection(title = stringResource(R.string.settings_history_title), icon = Icons.Default.History) {
+            SettingsSwitchRow(
+                label = stringResource(R.string.settings_history_toggle),
+                checked = uiState.historyEnabled,
+                onCheckedChange = { viewModel.setHistoryEnabled(it) }
+            )
+            Text(
+                stringResource(R.string.settings_history_hint),
+                style = MaterialTheme.typography.labelSmall
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                stringResource(R.string.settings_history_count, uiState.historyCount),
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedButton(
+                onClick = { showClearHistoryConfirm = true },
+                enabled = uiState.historyCount > 0
+            ) {
+                Text(stringResource(R.string.settings_clear_history_button))
+            }
+
+            if (showClearHistoryConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showClearHistoryConfirm = false },
+                    title = { Text(stringResource(R.string.settings_clear_history_confirm_title)) },
+                    text = { Text(stringResource(R.string.settings_clear_history_confirm_body, uiState.historyCount)) },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            viewModel.clearHistory()
+                            showClearHistoryConfirm = false
+                        }) {
+                            Text(stringResource(R.string.settings_clear_history_button))
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showClearHistoryConfirm = false }) {
+                            Text(stringResource(R.string.settings_cancel))
+                        }
+                    }
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))

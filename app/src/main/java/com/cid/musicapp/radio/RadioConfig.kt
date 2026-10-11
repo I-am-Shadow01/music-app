@@ -20,5 +20,12 @@ data class RadioConfig(
     val noiseWords: List<String> = AppConstants.RADIO_NOISE_WORDS,
     val versionWords: List<String> = AppConstants.RADIO_VERSION_WORDS,
     val artistNoiseWords: List<String> = AppConstants.RADIO_ARTIST_NOISE_WORDS,
-    val rejectTitlePhrases: List<String> = AppConstants.RADIO_REJECT_TITLE_PHRASES
+    val rejectTitlePhrases: List<String> = AppConstants.RADIO_REJECT_TITLE_PHRASES,
+    // รสนิยมจากประวัติการฟัง (ดู history/TasteProfile) — แยกเป็นกลุ่มเดียวกันเพื่อให้เทสต์ปรับได้ในที่เดียว
+    val maxArtistTokens: Int = AppConstants.TASTE_MAX_ARTIST_TOKENS,
+    val titleArtistWeight: Double = AppConstants.TASTE_TITLE_ARTIST_WEIGHT,
+    val tasteAffinityWeight: Double = AppConstants.TASTE_AFFINITY_WEIGHT,
+    val tasteArtistEvery: Int = AppConstants.TASTE_ARTIST_EVERY,
+    val tasteArtistsTriedPerFill: Int = AppConstants.TASTE_ARTISTS_TRIED_PER_FILL,
+    val tasteTopArtists: Int = AppConstants.TASTE_TOP_ARTISTS
 )

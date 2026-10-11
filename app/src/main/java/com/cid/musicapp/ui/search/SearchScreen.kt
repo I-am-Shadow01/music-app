@@ -12,6 +12,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -22,6 +23,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,9 +47,11 @@ fun SearchScreen(
     viewModel: SearchViewModel,
     onTrackSelected: (List<Track>, Int) -> Unit,
     onPlayNext: (Track) -> Unit,
-    onAddToQueue: (Track) -> Unit
+    onAddToQueue: (Track) -> Unit,
+    onPlayForYou: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val tastePreview by viewModel.tastePreview.collectAsStateWithLifecycle()
     val favoriteIds by viewModel.favoriteIds.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
 
@@ -110,16 +114,26 @@ fun SearchScreen(
             }
 
             uiState.query.isBlank() && uiState.results.isEmpty() -> {
-                if (uiState.recentSearches.isNotEmpty()) {
-                    RecentSearchesList(
-                        recentSearches = uiState.recentSearches,
-                        onSelect = viewModel::onRecentSearchSelected,
-                        onRemove = viewModel::removeRecentSearch,
-                        onClearAll = viewModel::clearRecentSearches
-                    )
-                } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(stringResource(R.string.search_empty_state))
+                Column(modifier = Modifier.fillMaxSize()) {
+                    if (tastePreview.canPlayForYou || tastePreview.topArtists.isNotEmpty()) {
+                        ForYouSection(
+                            preview = tastePreview,
+                            onPlayForYou = onPlayForYou,
+                            onArtistSelected = viewModel::onRecentSearchSelected
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    if (uiState.recentSearches.isNotEmpty()) {
+                        RecentSearchesList(
+                            recentSearches = uiState.recentSearches,
+                            onSelect = viewModel::onRecentSearchSelected,
+                            onRemove = viewModel::removeRecentSearch,
+                            onClearAll = viewModel::clearRecentSearches
+                        )
+                    } else if (!tastePreview.canPlayForYou && tastePreview.topArtists.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(stringResource(R.string.search_empty_state))
+                        }
                     }
                 }
             }
@@ -214,6 +228,37 @@ private fun SearchResultsSkeleton(modifier: Modifier = Modifier) {
                             .clip(RoundedCornerShape(4.dp))
                             .background(placeholderColor)
                     )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * ส่วน "สำหรับคุณ" ตอนยังไม่พิมพ์ค้นหา: ปุ่มเริ่มเล่นเพลงที่น่าจะชอบ + ศิลปินที่ฟังบ่อยเป็นชิปแตะแล้วค้นหาให้เลย
+ * (แสดงเฉพาะเมื่อมีประวัติการฟัง/เพลงโปรดพอ — ผู้ใช้ใหม่หรือคนปิดการจดประวัติจะไม่เห็น)
+ */
+@Composable
+private fun ForYouSection(
+    preview: TastePreview,
+    onPlayForYou: () -> Unit,
+    onArtistSelected: (String) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        if (preview.canPlayForYou) {
+            FilledTonalButton(onClick = onPlayForYou, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.PlayArrow, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.search_play_for_you))
+            }
+        }
+        if (preview.topArtists.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(stringResource(R.string.search_top_artists_title), style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(preview.topArtists, key = { it }) { name ->
+                    AssistChip(onClick = { onArtistSelected(name) }, label = { Text(name, maxLines = 1) })
                 }
             }
         }

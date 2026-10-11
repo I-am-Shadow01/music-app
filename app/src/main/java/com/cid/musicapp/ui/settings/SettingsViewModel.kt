@@ -6,6 +6,7 @@ import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.config.ThemeMode
 import com.cid.musicapp.data.repository.MusicRepository
+import com.cid.musicapp.history.ListeningHistory
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,6 +19,8 @@ data class SettingsUiState(
     val audioBitrateKbps: Int = AppConstants.DEFAULT_AUDIO_BITRATE_KBPS,
     val autoAdvanceEnabled: Boolean = true,
     val radioEnabled: Boolean = AppConstants.DEFAULT_RADIO_ENABLED,
+    val historyEnabled: Boolean = AppConstants.DEFAULT_HISTORY_ENABLED,
+    val historyCount: Int = 0,
     val autoCheckUpdatesEnabled: Boolean = true,
     val devModeEnabled: Boolean = false,
     val cacheClearedJustNow: Boolean = false,
@@ -28,7 +31,8 @@ data class SettingsUiState(
 
 class SettingsViewModel(
     private val appSettings: AppSettings,
-    private val musicRepository: MusicRepository
+    private val musicRepository: MusicRepository,
+    private val listeningHistory: ListeningHistory
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SettingsUiState())
@@ -63,6 +67,16 @@ class SettingsViewModel(
         viewModelScope.launch {
             appSettings.radioEnabledFlow.collect { enabled ->
                 _uiState.value = _uiState.value.copy(radioEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            appSettings.historyEnabledFlow.collect { enabled ->
+                _uiState.value = _uiState.value.copy(historyEnabled = enabled)
+            }
+        }
+        viewModelScope.launch {
+            listeningHistory.entries.collect { entries ->
+                _uiState.value = _uiState.value.copy(historyCount = entries.size)
             }
         }
         viewModelScope.launch {
@@ -105,6 +119,14 @@ class SettingsViewModel(
 
     fun setRadioEnabled(enabled: Boolean) {
         viewModelScope.launch { appSettings.setRadioEnabled(enabled) }
+    }
+
+    fun setHistoryEnabled(enabled: Boolean) {
+        viewModelScope.launch { appSettings.setHistoryEnabled(enabled) }
+    }
+
+    fun clearHistory() {
+        listeningHistory.clear()
     }
 
     fun setAutoCheckUpdates(enabled: Boolean) {

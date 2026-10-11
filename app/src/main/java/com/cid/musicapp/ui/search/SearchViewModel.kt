@@ -6,12 +6,14 @@ import com.cid.musicapp.config.AppConstants
 import com.cid.musicapp.config.AppSettings
 import com.cid.musicapp.data.repository.MusicRepository
 import com.cid.musicapp.data.repository.Track
+import com.cid.musicapp.history.TasteProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -27,9 +29,13 @@ data class SearchUiState(
     val recentSearches: List<String> = emptyList()
 )
 
+/** สิ่งที่หน้าค้นหาโชว์ตอนยังไม่พิมพ์อะไร: ปุ่มเล่นเพลงที่น่าจะชอบ + ทางลัดศิลปินที่ฟังบ่อย (ว่าง = ซ่อนทั้งส่วน) */
+data class TastePreview(val topArtists: List<String> = emptyList(), val canPlayForYou: Boolean = false)
+
 class SearchViewModel(
     private val repository: MusicRepository,
-    private val appSettings: AppSettings
+    private val appSettings: AppSettings,
+    tasteProvider: TasteProvider
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(SearchUiState())
@@ -38,6 +44,17 @@ class SearchViewModel(
     /** เพลงที่กดใจไว้ — ใช้เทียบว่าเพลงแต่ละแถวในผลค้นหาต้องโชว์หัวใจทึบหรือกลวง */
     val favoriteIds: StateFlow<Set<String>> = appSettings.favoriteTrackIdsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(AppConstants.STATE_FLOW_STOP_TIMEOUT_MILLIS), emptySet())
+
+    /** ศิลปินที่ฟังบ่อย + มีข้อมูลพอให้เล่น "เพลงที่คุณน่าจะชอบ" ไหม — อัปเดตสดตามประวัติ/เพลงโปรด/การตั้งค่า */
+    val tastePreview: StateFlow<TastePreview> = tasteProvider.profileFlow()
+        .map { profile ->
+            if (profile == null) TastePreview()
+            else TastePreview(
+                topArtists = profile.topArtists(AppConstants.TASTE_TOP_ARTISTS).map { it.name },
+                canPlayForYou = profile.seedCandidates(1).isNotEmpty()
+            )
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(AppConstants.STATE_FLOW_STOP_TIMEOUT_MILLIS), TastePreview())
 
     // job ของการค้นหา/โหลดเพิ่มที่กำลังทำงานอยู่ (ถ้ามี) — เก็บไว้เพื่อ cancel ตัวเก่าทิ้งเวลามีคำสั่งใหม่เข้ามา
     // กัน race condition: ถ้าไม่ cancel แล้วผู้ใช้ค้นหาซ้อนกันเร็วๆ ผลของคำค้นหาที่ตอบช้ากว่าอาจมาทับ

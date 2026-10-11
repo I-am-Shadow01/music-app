@@ -27,6 +27,13 @@ data class TrackIdentity(val songKey: String, val artistTokens: Set<String>) {
     }
 }
 
+/**
+ * คีย์ศิลปินที่ normalize แล้ว (ตัวพิมพ์/คำประกอบอย่าง "Topic", "VEVO" ไม่มีผล)
+ * @property displayName ชื่อที่เอาไปโชว์/ค้นหาได้ (ใช้ชื่อดิบที่เห็นจริง ไม่ใช่คีย์)
+ * @property weight 1.0 = ชื่อช่องที่อัป; ต่ำกว่า = เดามาจากชื่อคลิป ("ศิลปิน - เพลง") เชื่อถือน้อยกว่า
+ */
+data class ArtistKey(val key: String, val displayName: String, val weight: Double)
+
 /** สร้าง [TrackIdentity] จาก [Track] ตาม [RadioConfig] — ไม่มี state ใช้ซ้ำได้ทุก thread */
 class TrackIdentityFactory(private val config: RadioConfig) {
 
@@ -34,35 +41,58 @@ class TrackIdentityFactory(private val config: RadioConfig) {
     private val versionWords = config.versionWords.map { normalizeWord(it) }.toSet()
     private val artistNoiseWords = config.artistNoiseWords.map { normalizeWord(it) }.toSet()
 
-    fun of(track: Track): TrackIdentity {
+    /** ผลแยกชื่อคลิปเป็น "ส่วนเพลง" กับ "ส่วนศิลปินจากชื่อคลิป" (ถ้ามีรูปแบบ A - B) */
+    private class Parsed(val songPart: String, val titleArtistPart: String?, val uploaderTokens: Set<String>)
+
+    private fun parse(track: Track): Parsed {
         val cleanedTitle = stripDecorations(firstSegment(track.title))
         val parts = ARTIST_SONG_SPLITTER.split(cleanedTitle, limit = 2)
-
         val uploaderTokens = artistTokens(track.artist)
-        val songPart: String
-        val titleArtistTokens: Set<String>
-        if (parts.size == 2) {
-            val left = artistTokens(parts[0])
-            val right = artistTokens(parts[1])
-            // ปกติรูปแบบคือ "ศิลปิน - เพลง"; สลับเป็น "เพลง - ศิลปิน" เมื่อชื่อช่องไปตรงกับฝั่งขวาแต่ไม่ตรงฝั่งซ้าย
-            val reversed = uploaderTokens.any { it in right } && uploaderTokens.none { it in left }
-            if (reversed) {
-                songPart = parts[0]; titleArtistTokens = right
-            } else {
-                songPart = parts[1]; titleArtistTokens = left
-            }
-        } else {
-            songPart = cleanedTitle; titleArtistTokens = emptySet()
-        }
+        if (parts.size != 2) return Parsed(cleanedTitle, null, uploaderTokens)
 
+        val left = artistTokens(parts[0])
+        val right = artistTokens(parts[1])
+        // ปกติรูปแบบคือ "ศิลปิน - เพลง"; สลับเป็น "เพลง - ศิลปิน" เมื่อชื่อช่องไปตรงกับฝั่งขวาแต่ไม่ตรงฝั่งซ้าย
+        val reversed = uploaderTokens.any { it in right } && uploaderTokens.none { it in left }
+        return if (reversed) Parsed(parts[0], parts[1], uploaderTokens) else Parsed(parts[1], parts[0], uploaderTokens)
+    }
+
+    fun of(track: Track): TrackIdentity {
+        val parsed = parse(track)
+        val titleArtistTokens = parsed.titleArtistPart?.let { artistTokens(it) }.orEmpty()
         return TrackIdentity(
-            songKey = songTokens(songPart).joinToString(" "),
-            artistTokens = uploaderTokens + titleArtistTokens
+            songKey = songTokens(parsed.songPart).joinToString(" "),
+            artistTokens = parsed.uploaderTokens + titleArtistTokens
         )
+    }
+
+    /**
+     * ศิลปินของเพลงนี้ (ว่างได้ถ้าไม่รู้เลย): ชื่อช่องที่อัปมาก่อน (น้ำหนัก 1.0) แล้วตามด้วยศิลปินที่เดาจากชื่อคลิป
+     * (น้ำหนักต่ำกว่า) เฉพาะเมื่อสั้นพอจะเป็นชื่อคน/วง และไม่ซ้ำกับชื่อช่อง — ช่องเนื้อเพลง/ช่องรวมเพลงจึงยังนับให้ศิลปินจริงได้
+     */
+    fun artistKeys(track: Track): List<ArtistKey> {
+        val parsed = parse(track)
+        val result = ArrayList<ArtistKey>(2)
+
+        val uploaderKey = keyOf(parsed.uploaderTokens)
+        if (uploaderKey.isNotEmpty()) result += ArtistKey(uploaderKey, track.artist.trim(), 1.0)
+
+        val titlePart = parsed.titleArtistPart
+        if (titlePart != null) {
+            val tokens = artistTokens(titlePart)
+            val titleKey = keyOf(tokens)
+            if (titleKey.isNotEmpty() && titleKey != uploaderKey && tokens.size <= config.maxArtistTokens) {
+                result += ArtistKey(titleKey, titlePart.trim(), config.titleArtistWeight)
+            }
+        }
+        return result
     }
 
     /** คำ (token) ทั้งหมดของชื่อคลิป หลัง normalize — ใช้เทียบวลีต้องห้ามใน [RadioSelector] ด้วย */
     fun titleTokens(title: String): List<String> = tokenize(title)
+
+    /** เรียงคำก่อนต่อกัน ให้ "Band The" กับ "The Band" ได้คีย์เดียวกัน */
+    private fun keyOf(tokens: Set<String>): String = tokens.sorted().joinToString(" ")
 
     private fun songTokens(raw: String): List<String> {
         val withoutFeat = FEAT_SUFFIX.replace(raw.lowercase(Locale.ROOT), " ")
