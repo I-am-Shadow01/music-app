@@ -90,14 +90,14 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
 
-    implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("androidx.navigation:navigation-compose:${project.property("navigationComposeVersion")}")
 
     // เล่นเสียง + background playback
-    implementation("androidx.media3:media3-exoplayer:1.4.1")
-    implementation("androidx.media3:media3-session:1.4.1")
-    implementation("androidx.media3:media3-common:1.4.1")
+    implementation("androidx.media3:media3-exoplayer:${project.property("media3Version")}")
+    implementation("androidx.media3:media3-session:${project.property("media3Version")}")
+    implementation("androidx.media3:media3-common:${project.property("media3Version")}")
     // PlayerView (video surface) — ใช้เฉพาะโหมดวิดีโอในหน้ากำลังเล่น
-    implementation("androidx.media3:media3-ui:1.4.1")
+    implementation("androidx.media3:media3-ui:${project.property("media3Version")}")
 
     // ค้นหา + ดึงลิงก์เสียงจาก YouTube โดยตรงในแอป (ไม่ง้อ backend แยก)
     // NewValve = ตัวห่อ NewPipeExtractor ให้พร้อมใช้กับ OkHttp ทันที
