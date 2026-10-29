@@ -87,20 +87,12 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            val dynamicColorSupported = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            // Material You ใช้ได้เสมอ — minSdk 36 สูงกว่า Android 12 (API 31) ที่เริ่มรองรับ dynamic color
             SettingsSwitchRow(
                 label = stringResource(R.string.settings_dynamic_color_title),
-                checked = uiState.dynamicColorEnabled && dynamicColorSupported,
-                onCheckedChange = { viewModel.setDynamicColorEnabled(it) },
-                enabled = dynamicColorSupported
+                checked = uiState.dynamicColorEnabled,
+                onCheckedChange = { viewModel.setDynamicColorEnabled(it) }
             )
-            if (!dynamicColorSupported) {
-                Text(
-                    stringResource(R.string.settings_dynamic_color_unsupported),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
