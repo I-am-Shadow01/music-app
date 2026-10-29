@@ -10,6 +10,11 @@ on:
 permissions:
   contents: write
 
+# PR ที่ push ซ้ำให้ยกเลิก run เก่าทิ้ง — แต่ห้ามยกเลิก run บน main เพราะ run นั้นคือตัวปล่อย release
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,6 +27,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+          cache: gradle
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew

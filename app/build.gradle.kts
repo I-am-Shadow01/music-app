@@ -1,3 +1,6 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -6,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.cid.musicapp"
-    compileSdk = 34
+    compileSdk = project.property("androidCompileSdk").toString().toInt()
 
     // ใช้ keystore คงที่ตัวเดียวกันทุก build (เก็บไว้ที่ keystore/debug.keystore ใน repo)
     // กันปัญหา "แพ็กเกจขัดแย้งกับแพ็กเกจที่มีอยู่" ตอนอัปเดต — เกิดจาก AGP สุ่มสร้าง debug key
@@ -23,8 +26,8 @@ android {
 
     defaultConfig {
         applicationId = "com.cid.musicapp"
-        minSdk = 26
-        targetSdk = 34
+        minSdk = project.property("androidMinSdk").toString().toInt()
+        targetSdk = project.property("androidTargetSdk").toString().toInt()
         versionCode = 1
         versionName = "1.0"
 
@@ -54,12 +57,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
-        // จำเป็นสำหรับ NewPipeExtractor บน minSdk ต่ำกว่า 33
-        isCoreLibraryDesugaringEnabled = true
-    }
-
-    kotlinOptions {
-        jvmTarget = "17"
+        // ไม่เปิด core library desugaring แล้ว: README ของ NewPipeExtractor ระบุว่าต้องใช้เฉพาะเมื่อ
+        // minSdk ต่ำกว่า 33 แต่ตอนนี้ minSdk = 36
     }
 
     buildFeatures {
@@ -68,10 +67,16 @@ android {
     }
 }
 
+// แทน android { kotlinOptions { jvmTarget = "17" } } ที่ถูก deprecate แล้ว (เอกสาร Kotlin Gradle plugin:
+// ให้ย้ายไปใช้ compilerOptions) — ค่าต้องตรงกับ compileOptions ด้านบน
+tasks.withType<KotlinCompile>().configureEach {
+    compilerOptions.jvmTarget.set(JvmTarget.JVM_17)
+}
+
 dependencies {
     testImplementation("junit:junit:${project.property("junitVersion")}")
 
-    implementation(platform("androidx.compose:compose-bom:2024.09.00"))
+    implementation(platform("androidx.compose:compose-bom:${project.property("composeBomVersion")}"))
 
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.4")
@@ -121,9 +126,6 @@ dependencies {
     // gradle.properties แทน ("newpipeExtractorVersion") เพื่อให้ workflow update-newpipe.yml
     // เช็ค+อัปเดตเลขนี้ให้เองอัตโนมัติเมื่อ NewPipeExtractor ออกเวอร์ชันใหม่
     implementation("com.github.teamnewpipe:NewPipeExtractor:${project.property("newpipeExtractorVersion")}")
-
-    // จำเป็นสำหรับ NewPipeExtractor บน minSdk < 33
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs_nio:2.0.4")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

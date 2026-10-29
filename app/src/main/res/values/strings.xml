@@ -55,7 +55,6 @@
     <string name="favorites_remove">เอาออกจากเพลงโปรด</string>
 
     <string name="settings_dynamic_color_title">ใช้สีจากวอลเปเปอร์ (Material You)</string>
-    <string name="settings_dynamic_color_unsupported">รองรับเฉพาะ Android 12 ขึ้นไป</string>
     <string name="settings_video_quality_title">คุณภาพวิดีโอ</string>
     <string name="settings_video_quality_value">%1$dp</string>
     <string name="settings_video_quality_hint">ใช้เมื่อเล่นในโหมดวิดีโอเท่านั้น — ค่าที่ตั้งสูงกว่าที่มีจริงจะได้คุณภาพสูงสุดที่มีให้อัตโนมัติ</string>

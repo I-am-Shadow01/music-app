@@ -1,6 +1,5 @@
 package com.cid.musicapp.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -17,17 +16,15 @@ fun MusicAppTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     // ค่าเริ่มต้นดึงจาก AppConstants จุดเดียวกับ AppSettings — เดิมเคย hardcode สีเดียวกันไว้ที่นี่ซ้ำ
     accentColor: Color = Color(AppConstants.DEFAULT_ACCENT_COLOR_ARGB),
-    // Material You: ดึงสีจากวอลเปเปอร์เครื่องแทนสี accent ที่เลือกเอง — ใช้ได้เฉพาะ Android 12+ (API 31)
-    // เครื่องที่ต่ำกว่านี้จะ fallback กลับไปใช้ accentColor ปกติเสมอ ไม่ว่าค่านี้จะเป็นอะไร
+    // Material You: ดึงสีจากวอลเปเปอร์เครื่องแทนสี accent ที่เลือกเอง (minSdk 36 รองรับเสมอ)
     useDynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
-    val supportsDynamicColor = useDynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     val colors = when {
-        supportsDynamicColor && darkTheme -> dynamicDarkColorScheme(context)
-        supportsDynamicColor && !darkTheme -> dynamicLightColorScheme(context)
+        useDynamicColor && darkTheme -> dynamicDarkColorScheme(context)
+        useDynamicColor && !darkTheme -> dynamicLightColorScheme(context)
         darkTheme -> darkColorScheme(
             primary = accentColor,
             background = BackgroundDark,
